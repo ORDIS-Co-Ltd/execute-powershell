@@ -5,8 +5,12 @@
 * OpenCode permissions model: `context.ask()` patterns and `external_directory`
 * Runtime and process execution: Bun
 * Argument schemas: Zod
+* TypeScript compiler: `typescript`
+* Bun TypeScript types: `@types/bun`
 * PowerShell CLIs: `pwsh` and `powershell.exe`
 * Windows process tree termination: `taskkill.exe`
+* CI runners: GitHub Actions (`actions/checkout`, `oven-sh/setup-bun`)
+* Packaging tooling: npm CLI (`npm pack`)
 
 ## Version Baseline (Must use current stable versions)
 ### @opencode-ai/plugin
@@ -18,6 +22,14 @@
 * Target version is required to be `4.3.6`.
 * Source is required to be npm registry (`npm view zod version`).
 * API surface is required to include: `z.object`, `z.string`, `z.number().int().min()`, and `.default()`.
+
+### TypeScript
+* Target version is required to be `5.9.3`.
+* Source is required to be npm registry (`npm view typescript version`).
+
+### @types/bun
+* Target version is required to be `1.3.9`.
+* Source is required to be npm registry (`npm view @types/bun version`).
 
 ### Bun
 * Target version for development and CI is required to be `1.3.9`.
@@ -38,6 +50,12 @@
 ### Windows taskkill
 * Source is required to be Microsoft Learn `taskkill` reference.
 * Required invocation is `taskkill /PID <pid> /T /F`.
+
+### GitHub Actions
+* `actions/checkout` is required to use major version `v6`.
+* `oven-sh/setup-bun` is required to use major version `v2`.
+* `oven-sh/setup-bun` stable release is required to be `v2.1.2` at plan finalization time.
+* Sources are required to be GitHub releases and marketplace pages.
 
 ## API Surface Notes (Implementation Dependencies)
 ### OpenCode ToolContext.ask()
@@ -69,3 +87,9 @@
   * `https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_pwsh?view=powershell-7.4`
   * `https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1`
 * taskkill docs: `https://learn.microsoft.com/windows-server/administration/windows-commands/taskkill`
+* TypeScript npm metadata: `npm view typescript version`
+* @types/bun npm metadata: `npm view @types/bun version`
+* GitHub Actions:
+  * `https://github.com/actions/checkout/releases`
+  * `https://github.com/oven-sh/setup-bun/releases`
+  * `https://github.com/marketplace/actions/setup-bun`
