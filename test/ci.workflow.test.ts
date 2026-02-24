@@ -67,7 +67,8 @@ describe("CI workflow configuration", () => {
     const matrix = strategy.matrix as Record<string, unknown>;
     expect(matrix.os).toBeDefined();
     expect(Array.isArray(matrix.os)).toBe(true);
-    expect(matrix.os).toContain("windows-latest");
+    expect(matrix.os).toContain("windows-2022");
+    expect(matrix.os).toContain("windows-2019");
   });
 
   it("runs on matrix.os", () => {
