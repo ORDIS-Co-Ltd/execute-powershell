@@ -109,16 +109,27 @@ describe("deriveAlwaysPattern", () => {
       expect(deriveAlwaysPattern("Get-Process | Where-Object { $_.WorkingSet -gt 100MB }")).toBe("Get-Process *");
     });
 
-    it("handles empty string", () => {
-      expect(deriveAlwaysPattern("")).toBe("* *");
+    it("throws error for empty string", () => {
+      expect(() => deriveAlwaysPattern("")).toThrow("no valid command token found");
     });
 
-    it("handles whitespace-only string", () => {
-      expect(deriveAlwaysPattern("   ")).toBe("* *");
+    it("throws error for whitespace-only string", () => {
+      expect(() => deriveAlwaysPattern("   ")).toThrow("no valid command token found");
     });
 
-    it("handles string with only skip tokens", () => {
-      expect(deriveAlwaysPattern("& .")).toBe("* *");
+    it("throws error for string with only skip tokens", () => {
+      expect(() => deriveAlwaysPattern("& .")).toThrow("no valid command token found");
+    });
+
+    it("never generates wildcard-only patterns", () => {
+      // Security test: ensure we never create "* *" which would be over-broad
+      const invalidInputs = ["", "   ", "&", ".", "& .", "  &  "].map(input => {
+        return () => deriveAlwaysPattern(input);
+      });
+      
+      invalidInputs.forEach(fn => {
+        expect(fn).toThrow();
+      });
     });
 
     it("handles string with multiple whitespace between tokens", () => {

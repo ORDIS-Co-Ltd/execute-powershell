@@ -20,7 +20,7 @@ export function deriveAlwaysPattern(command: string): string {
     return `${token} *`;
   }
   
-  // Fallback: if no valid token found, return empty pattern
-  // This shouldn't happen with valid commands but handles edge cases
-  return '* *';
+  // Fallback: if no valid token found, throw error (fail-closed security)
+  // This prevents over-broad permission patterns from being generated
+  throw new Error("Cannot derive permission pattern: no valid command token found");
 }
