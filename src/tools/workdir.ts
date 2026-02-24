@@ -2,6 +2,41 @@ import path from "path";
 import type { ToolContext } from "@opencode-ai/plugin/tool";
 
 /**
+ * Asks for external_directory permission if the resolved workdir is outside the allowed boundary.
+ *
+ * Rules:
+ * 1. Build allowed roots from context
+ * 2. Check if resolvedWorkdir is within boundary
+ * 3. If outside: call context.ask() with permission "external_directory" and glob pattern
+ * 4. If inside: return without asking (no-op)
+ *
+ * @param context - The tool execution context
+ * @param resolvedWorkdir - The absolute, normalized workdir path
+ */
+export async function askExternalDirectoryIfRequired(
+  context: ToolContext,
+  resolvedWorkdir: string
+): Promise<void> {
+  const allowedRoots = buildAllowedRoots(context);
+  
+  if (isWithinBoundary(resolvedWorkdir, allowedRoots)) {
+    // Path is within boundary, no permission needed
+    return;
+  }
+  
+  // Path is outside boundary, ask for external_directory permission
+  // Convert Windows backslashes to forward slashes for glob pattern
+  const globPattern = resolvedWorkdir.replace(/\\/g, "/") + "/**";
+  
+  await context.ask({
+    permission: "external_directory",
+    patterns: [globPattern],
+    always: [globPattern],
+    metadata: {},
+  });
+}
+
+/**
  * Resolves a workdir argument to an absolute path.
  *
  * Rules:

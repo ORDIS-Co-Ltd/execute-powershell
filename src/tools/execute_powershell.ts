@@ -1,6 +1,7 @@
 import { tool, type ToolContext } from "@opencode-ai/plugin/tool";
 import { z } from "zod";
 import { askExecutePowerShellPermission } from "./permissions.js";
+import { askExternalDirectoryIfRequired, resolveWorkdir } from "./workdir.js";
 
 const argsSchema = {
   command: z.string(),
@@ -18,8 +19,11 @@ export const execute_powershell = tool({
     // Permission check MUST happen before any spawn logic
     await askExecutePowerShellPermission(context, args.command);
 
-    const effectiveWorkdir = args.workdir ?? context.directory;
-    return `Executed in: ${effectiveWorkdir}`;
+    // Resolve workdir and check external_directory permission if needed
+    const resolvedWorkdir = resolveWorkdir(context.directory, args.workdir);
+    await askExternalDirectoryIfRequired(context, resolvedWorkdir);
+
+    return `Executed in: ${resolvedWorkdir}`;
   },
 });
 
