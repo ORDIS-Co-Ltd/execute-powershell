@@ -34,6 +34,10 @@
 * Windows process tree termination must use `taskkill /PID <pid> /T /F`.
 * Metadata must report `endedBy` as `exit`, `timeout`, or `abort`.
 
+### ADR-006: Execution-Mode Compliance Priority
+* Functional execution semantics that require stdin script transport will take precedence over baseline compatibility notes that mention encoded-command behavior.
+* The implementation will enforce `-Command -` with stdin transport and will reject any runtime path that injects user program text through `-EncodedCommand`.
+
 ## Target Files
 The implementation is required to touch the following files.
 
@@ -76,24 +80,30 @@ The implementation is required to touch the following files.
 * `test/execute_powershell.timeout.abort.test.ts`
 * `test/execute_powershell.termination.test.ts`
 * `test/execute_powershell.integration.windows.test.ts`
+* `test/plugin.loading.local.test.ts`
+* `test/execute_powershell.discovery.test.ts`
+* `test/execute_powershell.output.truncation.test.ts`
+* `test/execute_powershell.execution_mode.test.ts`
 * `test/package.exports.test.ts`
 * `test/package.check.test.ts`
 * `test/ci.workflow.test.ts`
+* `test/ci.windows.compatibility.test.ts`
 
 ### Release Automation
 * `.github/workflows/ci.yml`
 
 ## Verification Strategy (100% Automated Coverage)
 ### Requirement To Test Mapping
-* Plugin loading requirements must map to `test/execute_powershell.plugin-export.test.ts`, `test/package.exports.test.ts`, and `test/package.manifest.test.ts`.
+* Plugin loading requirements must map to `test/execute_powershell.plugin-export.test.ts`, `test/package.exports.test.ts`, `test/package.manifest.test.ts`, and `test/plugin.loading.local.test.ts`.
 * Tool registration requirements must map to `test/execute_powershell.registration.test.ts`.
+* Tool discoverability and session invokability requirements must map to `test/execute_powershell.discovery.test.ts`.
 * Tool argument requirements must map to `test/execute_powershell.schema.timeout.test.ts` and `test/execute_powershell.schema.workdir.test.ts`.
 * Permission prefix and ask-order requirements must map to `test/execute_powershell.permission.prefix.test.ts` and `test/execute_powershell.permission.ask.test.ts`.
 * Project boundary and external directory requirements must map to `test/execute_powershell.workdir.resolve.test.ts`, `test/execute_powershell.workdir.boundary.test.ts`, and `test/execute_powershell.workdir.permission.test.ts`.
-* Executable precedence and command-line safety requirements must map to `test/execute_powershell.executable.resolve.test.ts`, `test/execute_powershell.process.argv.test.ts`, and `test/execute_powershell.process.spawn.test.ts`.
-* Output contract requirements must map to `test/execute_powershell.output.collector.test.ts` and `test/execute_powershell.metadata.footer.test.ts`.
+* Executable precedence and command-line safety requirements must map to `test/execute_powershell.executable.resolve.test.ts`, `test/execute_powershell.process.argv.test.ts`, `test/execute_powershell.process.spawn.test.ts`, and `test/execute_powershell.execution_mode.test.ts`.
+* Output contract requirements must map to `test/execute_powershell.output.collector.test.ts`, `test/execute_powershell.metadata.footer.test.ts`, and `test/execute_powershell.output.truncation.test.ts`.
 * Timeout and abort requirements must map to `test/execute_powershell.timeout.abort.test.ts`, `test/execute_powershell.termination.test.ts`, and `test/execute_powershell.integration.windows.test.ts`.
-* Compatibility and release requirements must map to `test/package.check.test.ts` and `test/ci.workflow.test.ts`.
+* Compatibility and release requirements must map to `test/package.check.test.ts`, `test/ci.workflow.test.ts`, and `test/ci.windows.compatibility.test.ts`.
 
 ### Coverage Gates
 * `bunfig.toml` will enforce `coverageThreshold = 1.0`.
@@ -110,3 +120,4 @@ The implementation is required to touch the following files.
 * Combined ordering from distinct output pipes is subject to OS scheduling and must be validated with stream-level tests.
 * Windows process tree termination behavior differs across host policies and must be validated on Windows 10 and Windows 11 CI runners.
 * Encoding behavior from localized PowerShell hosts must be validated with UTF-8 sample output in automated tests.
+* Dedicated Windows 10 and Windows 11 CI runner capacity is required to satisfy compatibility coverage commitments.

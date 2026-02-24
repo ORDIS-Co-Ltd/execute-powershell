@@ -50,6 +50,8 @@ All versions in this section are required to match the verification sources list
 * Plugin functions must conform to `Plugin = (input: PluginInput) => Promise<Hooks>`.
 * Tool registration must use the `tool` hook map in returned `Hooks`.
 * `ToolContext.ask()` input is required to include `permission`, `patterns`, `always`, and `metadata`.
+* Plugin loading is required to support npm package names in `opencode.json` and local plugin files in `.opencode/plugins/` and `~/.config/opencode/plugins/`.
+* Plugin loading order is required to follow documented source precedence so local and npm plugins resolve deterministically.
 
 ### OpenCode Permission Rules
 * Permission actions are required to resolve to `allow`, `ask`, or `deny`.
@@ -77,6 +79,7 @@ All versions in this section are required to match the verification sources list
 * OpenCode permissions documentation states that the legacy `tools` boolean configuration is deprecated as of `v1.1.1`.
 * This plan is required to integrate permissions only through `permission` rules and `context.ask()` calls.
 * SRS baseline lists Zod `4.1.8`; npm stable version is `4.3.6`; selected APIs are required to stay inside shared stable surface, so migration risk is constrained.
+* SRS execution semantics require stdin transport while SRS baseline notes include encoded-command guidance; this plan is required to prioritize stdin transport and verify encoded-command exclusion through automated tests.
 
 ## Sources
 ### Context7 Sources
@@ -91,7 +94,7 @@ All versions in this section are required to match the verification sources list
 * `context7_resolve-library-id` for setup-bun selected `/oven-sh/setup-bun`.
 * `context7_query-docs` on `/oven-sh/setup-bun` validated action syntax and inputs.
 * `context7_resolve-library-id` for OpenCode repository selected `/anomalyco/opencode`.
-* `context7_query-docs` on `/anomalyco/opencode` validated permissions deprecation and `external_directory` behavior.
+* `context7_query-docs` on `/anomalyco/opencode` validated permissions deprecation, `external_directory` behavior, plugin local-directory loading, and npm plugin loading via `opencode.json`.
 
 ### Supplemental Validation Sources
 * `npm view @opencode-ai/plugin version`
@@ -105,5 +108,6 @@ All versions in this section are required to match the verification sources list
 * `https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pwsh?view=powershell-7.4`
 * `https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1`
 * `https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill`
+* `https://opencode.ai/docs/plugins/`
 * `https://unpkg.com/@opencode-ai/plugin@1.2.10/dist/index.d.ts`
 * `https://unpkg.com/@opencode-ai/plugin@1.2.10/dist/tool.d.ts`
