@@ -30,10 +30,13 @@ export const execute_powershell = tool({
     // Resolve PowerShell executable
     const exe = resolvePowerShellExecutable();
 
+    // Apply default timeout if not provided
+    const timeoutMs = args.timeout_ms ?? 120000;
+
     // Create abort controller for timeout
     const controller = new AbortController();
-    const timeoutId = args.timeout_ms > 0
-      ? setTimeout(() => controller.abort(), args.timeout_ms)
+    const timeoutId = timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
       : null;
 
     // Track execution start time
@@ -68,7 +71,7 @@ export const execute_powershell = tool({
         endedBy,
         shell: exe.kind,
         resolvedWorkdir,
-        timeoutMs: args.timeout_ms,
+        timeoutMs,
         durationMs,
       };
 
@@ -95,7 +98,7 @@ export const execute_powershell = tool({
         endedBy,
         shell: exe.kind,
         resolvedWorkdir,
-        timeoutMs: args.timeout_ms,
+        timeoutMs,
         durationMs,
       };
 

@@ -46,11 +46,23 @@ export function formatMetadataFooter(meta: PowerShellMetadata): string {
  * @returns The parsed metadata, or null if not found
  */
 export function parseMetadataFooter(text: string): PowerShellMetadata | null {
-  const match = text.match(/<powershell_metadata>(.+?)<\/powershell_metadata>$/);
+  const match = text.match(/<powershell_metadata>(.+?)<\/powershell_metadata>$/s);
   if (!match) return null;
-  
+
   try {
-    return JSON.parse(match[1]) as PowerShellMetadata;
+    const parsed = JSON.parse(match[1]);
+    // Validate all required fields
+    if (
+      typeof parsed.exitCode !== "number" ||
+      !["exit", "timeout", "abort"].includes(parsed.endedBy) ||
+      typeof parsed.shell !== "string" ||
+      typeof parsed.resolvedWorkdir !== "string" ||
+      typeof parsed.timeoutMs !== "number" ||
+      typeof parsed.durationMs !== "number"
+    ) {
+      return null;
+    }
+    return parsed as PowerShellMetadata;
   } catch {
     return null;
   }
