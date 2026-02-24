@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { buildPowerShellCommand } from "../src/tools/process";
+import { buildPowerShellCommand } from "../src/tools/process.js";
 
 describe("buildPowerShellCommand", () => {
   describe("argv invariants", () => {
