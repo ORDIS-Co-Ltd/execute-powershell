@@ -8,7 +8,11 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [windows-latest]
+        include:
+          - compatibility: windows-11
+            os: windows-2022
+          - compatibility: windows-10
+            os: windows-2019
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
