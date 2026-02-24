@@ -14,6 +14,9 @@ export const execute_powershell = tool({
   description: "Execute PowerShell commands on Windows",
   args: argsSchema as z.ZodRawShape,
   async execute(args: ArgsType, context: ToolContext) {
+    const effectiveWorkdir = args.workdir ?? context.directory;
     return "placeholder_output";
   },
 });
+
+export { argsSchema };
