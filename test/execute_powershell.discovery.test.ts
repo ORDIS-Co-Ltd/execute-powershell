@@ -1,8 +1,8 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
 import { ExecutePowerShellPlugin } from "../src/index";
-import type { ToolDefinition } from "@opencode-ai/plugin";
+import type { Hooks, PluginInput } from "@opencode-ai/plugin";
+import type { ToolContext, ToolDefinition } from "@opencode-ai/plugin/tool";
 
-// Helper function to create a readable stream from string
 function createStreamFromString(text: string): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   return new ReadableStream({
@@ -13,8 +13,7 @@ function createStreamFromString(text: string): ReadableStream<Uint8Array> {
   });
 }
 
-// Helper function to setup Bun.spawn mock
-function setupSpawnMock(expectedOutput: string, exitCode: number = 0) {
+function setupSpawnMock(expectedOutput: string, exitCode = 0) {
   return mock(() => {
     return {
       stdout: createStreamFromString(expectedOutput),
@@ -26,7 +25,33 @@ function setupSpawnMock(expectedOutput: string, exitCode: number = 0) {
   });
 }
 
-describe("Tool Discovery and Invokability", () => {
+class ToolRegistry {
+  private constructor(private readonly tools: Map<string, ToolDefinition>) {}
+
+  static fromPlugin(hooks: Hooks): ToolRegistry {
+    const tools = new Map<string, ToolDefinition>();
+    for (const [name, definition] of Object.entries(hooks.tool ?? {})) {
+      tools.set(name, definition);
+    }
+    return new ToolRegistry(tools);
+  }
+
+  list() {
+    return [...this.tools.entries()];
+  }
+
+  get(toolName: string) {
+    return this.tools.get(toolName);
+  }
+
+  async execute(toolName: string, args: unknown, context: ToolContext) {
+    const tool = this.tools.get(toolName);
+    if (!tool) throw new Error(`Tool not found: ${toolName}`);
+    return tool.execute(args as any, context);
+  }
+}
+
+describe("Tool discovery and session invokability", () => {
   let originalBunSpawn: typeof Bun.spawn;
 
   beforeEach(() => {
@@ -37,65 +62,44 @@ describe("Tool Discovery and Invokability", () => {
     (Bun as unknown as { spawn: typeof originalBunSpawn }).spawn = originalBunSpawn;
   });
 
-  it("discovers execute_powershell in tool inventory", async () => {
-    // Get plugin to construct runtime inventory
-    const plugin = await ExecutePowerShellPlugin({
+  async function createPluginHooks() {
+    const input: PluginInput = {
       client: {} as any,
       project: {} as any,
       directory: "",
       worktree: "",
       serverUrl: new URL("http://localhost"),
       $: {} as any,
-    });
+    };
+    return ExecutePowerShellPlugin(input);
+  }
 
-    // Construct tool inventory the way OpenCode would
-    const tools = new Map<string, ToolDefinition>();
-    if (plugin.tool) {
-      for (const [name, tool] of Object.entries(plugin.tool)) {
-        tools.set(name, tool);
-      }
-    }
+  it("discovers execute_powershell through registry construction", async () => {
+    const hooks = await createPluginHooks();
+    const registry = ToolRegistry.fromPlugin(hooks);
 
-    // Query registry
-    expect(tools.has("execute_powershell")).toBe(true);
-    const tool = tools.get("execute_powershell")!;
-    expect(tool.description).toBe("Execute PowerShell commands on Windows");
-    expect(tool.args).toBeDefined();
-    const schema = tool.args;
-    expect(schema.command).toBeDefined();
-    expect(schema.description).toBeDefined();
-    expect(schema.timeout_ms).toBeDefined();
-    expect(schema.workdir).toBeDefined();
+    const names = registry.list().map(([name]) => name);
+    expect(names).toContain("execute_powershell");
+
+    const tool = registry.get("execute_powershell");
+    expect(tool).toBeDefined();
+    expect(tool?.description).toBe("Execute PowerShell commands on Windows");
+    expect(tool?.args.command).toBeDefined();
+    expect(tool?.args.description).toBeDefined();
+    expect(tool?.args.timeout_ms).toBeDefined();
+    expect(tool?.args.workdir).toBeDefined();
   });
 
-  it("invokes tool through registry execution path", async () => {
-    // Mock Bun.spawn to return expected output
+  it("invokes execute_powershell via registry execute path", async () => {
     const expectedOutput = "PowerShell output test";
-    (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMock(expectedOutput, 0);
+    (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn =
+      setupSpawnMock(expectedOutput, 0);
 
-    // Get plugin to construct runtime inventory
-    const plugin = await ExecutePowerShellPlugin({
-      client: {} as any,
-      project: {} as any,
-      directory: "",
-      worktree: "",
-      serverUrl: new URL("http://localhost"),
-      $: {} as any,
-    });
+    const hooks = await createPluginHooks();
+    const registry = ToolRegistry.fromPlugin(hooks);
 
-    // Construct tool inventory the way OpenCode would
-    const tools = new Map<string, ToolDefinition>();
-    if (plugin.tool) {
-      for (const [name, tool] of Object.entries(plugin.tool)) {
-        tools.set(name, tool);
-      }
-    }
-
-    // Get tool from registry
-    const tool = tools.get("execute_powershell")!;
-
-    // Invoke through registry path
-    const result = await tool.execute(
+    const result = await registry.execute(
+      "execute_powershell",
       { command: "Write-Host test", description: "test", timeout_ms: 5000 },
       {
         sessionID: "test-session",
@@ -110,8 +114,6 @@ describe("Tool Discovery and Invokability", () => {
     );
 
     expect(typeof result).toBe("string");
-    expect(result).toBeDefined();
-    expect(result.length).toBeGreaterThan(0);
     expect(result).toContain(expectedOutput);
   });
 });

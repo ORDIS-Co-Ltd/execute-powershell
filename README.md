@@ -52,8 +52,8 @@ Once registered, the plugin provides the `execute_powershell` tool with the foll
   "tool": "execute_powershell",
   "params": {
     "command": "Get-Process",
-    "workingDirectory": "/path/to/workdir",
-    "timeout": 30000
+    "workdir": "/path/to/workdir",
+    "timeout_ms": 30000
   }
 }
 ```

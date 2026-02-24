@@ -153,6 +153,33 @@ More output
     expect(result).toBeNull();
   });
 
+  it("returns null when required metadata fields are missing", () => {
+    const text =
+      "Output<powershell_metadata>{\"exitCode\":0,\"endedBy\":\"exit\"}</powershell_metadata>";
+
+    const result = parseMetadataFooter(text);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when endedBy is invalid", () => {
+    const text =
+      "Output<powershell_metadata>{\"exitCode\":0,\"endedBy\":\"stopped\",\"shell\":\"pwsh\",\"resolvedWorkdir\":\"/w\",\"timeoutMs\":1,\"durationMs\":1}</powershell_metadata>";
+
+    const result = parseMetadataFooter(text);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when numeric fields are not numbers", () => {
+    const text =
+      "Output<powershell_metadata>{\"exitCode\":\"0\",\"endedBy\":\"exit\",\"shell\":\"pwsh\",\"resolvedWorkdir\":\"/w\",\"timeoutMs\":\"1\",\"durationMs\":1}</powershell_metadata>";
+
+    const result = parseMetadataFooter(text);
+
+    expect(result).toBeNull();
+  });
+
   it("parses metadata with different endedBy values", () => {
     const exitText = "Output<powershell_metadata>{\"exitCode\":0,\"endedBy\":\"exit\",\"shell\":\"powershell\",\"resolvedWorkdir\":\"/workdir\",\"timeoutMs\":120000,\"durationMs\":1000}</powershell_metadata>";
     const timeoutText = "Output<powershell_metadata>{\"exitCode\":1,\"endedBy\":\"timeout\",\"shell\":\"pwsh\",\"resolvedWorkdir\":\"/workdir\",\"timeoutMs\":5000,\"durationMs\":5000}</powershell_metadata>";

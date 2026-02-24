@@ -1,7 +1,8 @@
-import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from "bun:test";
 import { ExecutePowerShellPlugin } from "../src/index";
 import type { ToolDefinition } from "@opencode-ai/plugin";
 import { parseMetadataFooter } from "../src/tools/metadata.js";
+import * as powershellExe from "../src/tools/powershell_exe.js";
 
 // Helper function to create a readable stream from string
 function createStreamFromString(text: string): ReadableStream<Uint8Array> {
@@ -97,5 +98,45 @@ describe("tool registration", () => {
     expect(metadata?.resolvedWorkdir).toBe("/test/dir");
     expect(metadata?.shell).toBeDefined();
     expect(metadata?.endedBy).toBe("exit");
+  });
+
+  it("returns error output with metadata when executable resolution fails", async () => {
+    const resolverSpy = spyOn(powershellExe, "resolvePowerShellExecutable").mockImplementation(() => {
+      throw new Error("PowerShell not found");
+    });
+
+    try {
+      const hooks = await ExecutePowerShellPlugin({
+        client: {} as any,
+        project: {} as any,
+        directory: "",
+        worktree: "",
+        serverUrl: new URL("http://localhost"),
+        $: {} as any,
+      });
+
+      const toolDef = hooks.tool?.execute_powershell as ToolDefinition;
+      const result = await toolDef.execute(
+        { command: "echo test", description: "test", timeout_ms: 5000 },
+        {
+          sessionID: "test",
+          messageID: "test",
+          agent: "test",
+          directory: "/test/dir",
+          worktree: "",
+          abort: new AbortController().signal,
+          metadata: () => {},
+          ask: async () => {},
+        }
+      );
+
+      expect(result).toContain("PowerShell not found");
+      const metadata = parseMetadataFooter(result);
+      expect(metadata).not.toBeNull();
+      expect(metadata?.exitCode).toBe(-1);
+      expect(metadata?.shell).toBe("unknown");
+    } finally {
+      resolverSpy.mockRestore();
+    }
   });
 });

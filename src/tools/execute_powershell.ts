@@ -1,4 +1,4 @@
-import { tool, type ToolContext } from "@opencode-ai/plugin/tool";
+import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin/tool";
 import { z } from "zod";
 import { askExecutePowerShellPermission } from "./permissions.js";
 import { askExternalDirectoryIfRequired, resolveWorkdir } from "./workdir.js";
@@ -14,100 +14,72 @@ const argsSchema = {
   workdir: z.string().optional(),
 } as const;
 
-type ArgsType = z.infer<z.ZodObject<typeof argsSchema>>;
+type ArgsType = {
+  command: string;
+  description: string;
+  timeout_ms?: number;
+  workdir?: string;
+};
 
-export const execute_powershell = tool({
+export const execute_powershell: ToolDefinition = tool({
   description: "Execute PowerShell commands on Windows",
-  args: argsSchema as z.ZodRawShape,
+  args: argsSchema as any,
   async execute(args: ArgsType, context: ToolContext) {
-    // Permission check MUST happen before any spawn logic
     await askExecutePowerShellPermission(context, args.command);
-
-    // Resolve workdir and check external_directory permission if needed
     const resolvedWorkdir = resolveWorkdir(context.directory, args.workdir);
     await askExternalDirectoryIfRequired(context, resolvedWorkdir);
-
-    // Resolve PowerShell executable
-    const exe = resolvePowerShellExecutable();
-
-    // Apply default timeout if not provided
     const timeoutMs = args.timeout_ms ?? 120000;
-
-    // Create termination signal coordinator with context abort and timeout
-    const { signal: abortSignal, getEndedBy } = createTerminationSignal(
+    const { signal, getEndedBy } = createTerminationSignal(
       context.abort,
       timeoutMs
     );
-
-    // Track execution start time
     const startTime = Date.now();
     let exitCode = 0;
+    let shell = "unknown";
     let proc: ReturnType<typeof spawnPowerShell> | undefined;
 
     try {
-      // Spawn PowerShell process
+      const exe = resolvePowerShellExecutable();
+      shell = exe.kind;
+
       proc = spawnPowerShell({
         exePath: exe.path,
         command: args.command,
         cwd: resolvedWorkdir,
-        signal: abortSignal,
+        signal,
       });
-
-      // Collect combined output
       const output = await collectCombinedOutput(proc);
-
-      // Get exit code
       exitCode = await proc.exited;
-
-      // Calculate duration
       const durationMs = Date.now() - startTime;
-
-      // Get endedBy from the coordinator
       const endedBy = getEndedBy();
 
-      // Build metadata
       const metadata: PowerShellMetadata = {
         exitCode,
         endedBy,
-        shell: exe.kind,
+        shell,
         resolvedWorkdir,
         timeoutMs,
         durationMs,
       };
 
-      // Return output with metadata footer
       return output + formatMetadataFooter(metadata);
     } catch (error) {
-      // Calculate duration for error case
       const durationMs = Date.now() - startTime;
-
-      // Get endedBy from the coordinator (reports timeout/abort/exit)
       const endedBy = getEndedBy();
+      exitCode = endedBy === "timeout" ? 1 : -1;
 
-      // Determine exit code based on how execution ended
-      if (endedBy === "timeout") {
-        exitCode = 1;
-      } else if (endedBy === "abort" || proc?.killed) {
-        exitCode = -1;
-      } else {
-        exitCode = -1;
-      }
-
-      // Build metadata for error case
       const metadata: PowerShellMetadata = {
         exitCode,
         endedBy,
-        shell: exe.kind,
+        shell,
         resolvedWorkdir,
         timeoutMs,
         durationMs,
       };
 
-      // Return error message with metadata footer
       const errorOutput = error instanceof Error ? error.message : String(error);
       return errorOutput + formatMetadataFooter(metadata);
     } finally {
-      // Always terminate process tree if ended by timeout or abort
       const endedBy = getEndedBy();
       if ((endedBy === "timeout" || endedBy === "abort") && proc?.pid) {
         await terminateProcessTree(proc.pid);

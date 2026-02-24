@@ -68,11 +68,13 @@ describe("CI workflow configuration", () => {
     // Check for include pattern (matrix with compatibility labels)
     if (matrix.include) {
       const osValues = matrix.include.map(m => m.os);
+      expect(osValues).toContain("windows-latest");
       expect(osValues).toContain("windows-2022");
       expect(osValues).toContain("windows-2019");
     } else if (matrix.os) {
       // Check for simple os array pattern
       expect(Array.isArray(matrix.os)).toBe(true);
+      expect(matrix.os).toContain("windows-latest");
       expect(matrix.os).toContain("windows-2022");
       expect(matrix.os).toContain("windows-2019");
     }

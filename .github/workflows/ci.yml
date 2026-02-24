@@ -9,6 +9,8 @@ jobs:
     strategy:
       matrix:
         include:
+          - compatibility: windows-latest
+            os: windows-latest
           - compatibility: windows-11
             os: windows-2022
           - compatibility: windows-10

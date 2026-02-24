@@ -1,3 +1,4 @@
 [test]
 coverage = true
 coverageThreshold = 1.0
+coveragePathIgnorePatterns = ["dist/**", "tmp/**", ".opencode/**"]

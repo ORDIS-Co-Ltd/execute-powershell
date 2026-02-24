@@ -17,4 +17,12 @@ describe("bunfig coverage configuration", () => {
 
     expect(content).toContain("coverageThreshold = 1.0");
   });
+
+  it("ignores dist and tmp paths in coverage", () => {
+    const content = readFileSync(bunfigPath, "utf-8");
+
+    expect(content).toContain("coveragePathIgnorePatterns");
+    expect(content).toContain("dist/**");
+    expect(content).toContain("tmp/**");
+  });
 });
