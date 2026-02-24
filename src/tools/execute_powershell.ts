@@ -4,7 +4,7 @@ import { askExecutePowerShellPermission } from "./permissions.js";
 import { askExternalDirectoryIfRequired, resolveWorkdir } from "./workdir.js";
 import { formatMetadataFooter, type PowerShellMetadata } from "./metadata.js";
 import { resolvePowerShellExecutable } from "./powershell_exe.js";
-import { spawnPowerShell } from "./process.js";
+import { spawnPowerShell, createTerminationSignal } from "./process.js";
 import { collectCombinedOutput } from "./output.js";
 
 const argsSchema = {
@@ -33,15 +33,14 @@ export const execute_powershell = tool({
     // Apply default timeout if not provided
     const timeoutMs = args.timeout_ms ?? 120000;
 
-    // Create abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = timeoutMs > 0
-      ? setTimeout(() => controller.abort(), timeoutMs)
-      : null;
+    // Create termination signal coordinator with context abort and timeout
+    const { signal: abortSignal, getEndedBy } = createTerminationSignal(
+      context.abort,
+      timeoutMs
+    );
 
     // Track execution start time
     const startTime = Date.now();
-    let endedBy: PowerShellMetadata["endedBy"] = "exit";
     let exitCode = 0;
     let proc: ReturnType<typeof spawnPowerShell> | undefined;
 
@@ -51,7 +50,7 @@ export const execute_powershell = tool({
         exePath: exe.path,
         command: args.command,
         cwd: resolvedWorkdir,
-        signal: controller.signal,
+        signal: abortSignal,
       });
 
       // Collect combined output
@@ -63,8 +62,8 @@ export const execute_powershell = tool({
       // Calculate duration
       const durationMs = Date.now() - startTime;
 
-      // Clear timeout if process finished normally
-      if (timeoutId) clearTimeout(timeoutId);
+      // Get endedBy from the coordinator
+      const endedBy = getEndedBy();
 
       // Build metadata
       const metadata: PowerShellMetadata = {
@@ -79,24 +78,18 @@ export const execute_powershell = tool({
       // Return output with metadata footer
       return output + formatMetadataFooter(metadata);
     } catch (error) {
-      // Clear timeout
-      if (timeoutId) clearTimeout(timeoutId);
-
       // Calculate duration for error case
       const durationMs = Date.now() - startTime;
 
-      // Determine how execution ended:
-      // - "timeout": process exceeded timeout duration
-      // - "abort": process was explicitly killed (proc.killed)
-      // - "exit": any other failure (normal process exit with error)
-      if (controller.signal.aborted && durationMs >= timeoutMs) {
-        endedBy = "timeout";
+      // Get endedBy from the coordinator (reports timeout/abort/exit)
+      const endedBy = getEndedBy();
+
+      // Determine exit code based on how execution ended
+      if (endedBy === "timeout") {
         exitCode = 1;
-      } else if (proc?.killed) {
-        endedBy = "abort";
+      } else if (endedBy === "abort" || proc?.killed) {
         exitCode = -1;
       } else {
-        endedBy = "exit";
         exitCode = -1;
       }
 

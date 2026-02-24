@@ -13,6 +13,81 @@ export function buildPowerShellCommand(exePath: string): string[] {
 }
 
 /**
+ * Termination signal interface for coordinating timeout and abort.
+ */
+export interface TerminationSignal {
+  /** AbortSignal that is triggered on timeout or abort */
+  signal: AbortSignal;
+  /** Returns how the execution ended: "exit", "timeout", or "abort" */
+  getEndedBy: () => "exit" | "timeout" | "abort";
+}
+
+/**
+ * Creates a termination signal coordinator that merges context abort and timeout.
+ *
+ * This function creates an AbortController and wires up:
+ * - Context abort listener: triggers abort when the parent context is cancelled
+ * - Timeout logic: triggers abort after timeoutMs milliseconds (disabled if 0)
+ *
+ * The `getEndedBy()` function reports how the execution ended:
+ * - "exit": Process completed normally (signal not triggered by timeout/abort)
+ * - "timeout": Timeout duration was exceeded
+ * - "abort": Explicitly cancelled via context.abort
+ *
+ * @param contextAbort - Optional AbortSignal from parent context
+ * @param timeoutMs - Timeout in milliseconds (0 disables timeout)
+ * @returns TerminationSignal with signal and endedBy tracker
+ */
+export function createTerminationSignal(
+  contextAbort: AbortSignal | undefined,
+  timeoutMs: number
+): TerminationSignal {
+  // Check if already aborted - if so, return immediately with abort status
+  if (contextAbort?.aborted) {
+    return {
+      signal: contextAbort,
+      getEndedBy: () => "abort",
+    };
+  }
+
+  const controller = new AbortController();
+  let endedBy: "exit" | "timeout" | "abort" = "exit";
+
+  // Handle context abort - triggered immediately when parent context cancels
+  if (contextAbort) {
+    contextAbort.addEventListener("abort", () => {
+      // Only set if not already decided (first-cause wins)
+      if (endedBy === "exit") {
+        endedBy = "abort";
+        controller.abort();
+      }
+    });
+  }
+
+  // Handle timeout - only set up if timeoutMs > 0
+  let timeoutId: Timer | undefined;
+  if (timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      // Only set if not already decided (first-cause wins)
+      if (endedBy === "exit") {
+        endedBy = "timeout";
+        controller.abort();
+      }
+    }, timeoutMs);
+  }
+
+  // Clean up timeout when signal is aborted (prevents memory leaks)
+  controller.signal.addEventListener("abort", () => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+
+  return {
+    signal: controller.signal,
+    getEndedBy: () => endedBy,
+  };
+}
+
+/**
  * Options for spawning a PowerShell process with stdin transport.
  */
 export interface SpawnPowerShellOptions {
