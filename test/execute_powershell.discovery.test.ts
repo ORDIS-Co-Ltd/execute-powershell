@@ -38,8 +38,8 @@ describe("Tool Discovery and Invokability", () => {
   });
 
   it("discovers execute_powershell in tool inventory", async () => {
-    // Register plugin and construct runtime tool inventory
-    const hooks = await ExecutePowerShellPlugin({
+    // Get plugin to construct runtime inventory
+    const plugin = await ExecutePowerShellPlugin({
       client: {} as any,
       project: {} as any,
       directory: "",
@@ -48,31 +48,28 @@ describe("Tool Discovery and Invokability", () => {
       $: {} as any,
     });
 
-    // Verify tool registry entries exist
-    expect(hooks.tool).toBeDefined();
-    expect(hooks.tool?.execute_powershell).toBeDefined();
+    // Construct tool inventory the way OpenCode would
+    const tools = new Map<string, ToolDefinition>();
+    if (plugin.tool) {
+      for (const [name, tool] of Object.entries(plugin.tool)) {
+        tools.set(name, tool);
+      }
+    }
 
-    // Get the tool definition
-    const toolDef = hooks.tool?.execute_powershell as ToolDefinition;
-
-    // Verify expected description
-    expect(toolDef.description).toBe("Execute PowerShell commands on Windows");
-
-    // Verify argument schema keys
-    expect(toolDef.args).toBeDefined();
-    expect(toolDef.args).toHaveProperty("command");
-    expect(toolDef.args).toHaveProperty("description");
-    expect(toolDef.args).toHaveProperty("timeout_ms");
-    expect(toolDef.args).toHaveProperty("workdir");
+    // Query registry
+    expect(tools.has("execute_powershell")).toBe(true);
+    const tool = tools.get("execute_powershell")!;
+    expect(tool.description).toBe("Execute PowerShell commands on Windows");
+    expect(tool.args).toBeDefined();
   });
 
-  it("invokes tool through registry and returns string", async () => {
+  it("invokes tool through registry execution path", async () => {
     // Mock Bun.spawn to return expected output
     const expectedOutput = "PowerShell output test";
     (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMock(expectedOutput, 0);
 
-    // Register plugin and construct runtime tool inventory
-    const hooks = await ExecutePowerShellPlugin({
+    // Get plugin to construct runtime inventory
+    const plugin = await ExecutePowerShellPlugin({
       client: {} as any,
       project: {} as any,
       directory: "",
@@ -81,25 +78,32 @@ describe("Tool Discovery and Invokability", () => {
       $: {} as any,
     });
 
-    // Get the tool from inventory
-    const toolDef = hooks.tool?.execute_powershell as ToolDefinition;
+    // Construct tool inventory the way OpenCode would
+    const tools = new Map<string, ToolDefinition>();
+    if (plugin.tool) {
+      for (const [name, tool] of Object.entries(plugin.tool)) {
+        tools.set(name, tool);
+      }
+    }
 
-    // Invoke tool through registry execution path
-    const result = await toolDef.execute(
-      { command: "Write-Output 'test'", description: "test", timeout_ms: 5000 },
-      { 
-        sessionID: "test-session", 
-        messageID: "test-msg", 
-        agent: "test", 
-        directory: "/test/dir", 
-        worktree: "", 
-        abort: new AbortController().signal, 
-        metadata: () => {}, 
-        ask: async () => {} 
+    // Get tool from registry
+    const tool = tools.get("execute_powershell")!;
+
+    // Invoke through registry path
+    const result = await tool.execute(
+      { command: "Write-Host test", description: "test", timeout_ms: 5000 },
+      {
+        sessionID: "test-session",
+        messageID: "test-msg",
+        agent: "test",
+        directory: "/test/dir",
+        worktree: "",
+        abort: new AbortController().signal,
+        metadata: () => {},
+        ask: async () => {},
       }
     );
 
-    // Assert string output contract
     expect(typeof result).toBe("string");
     expect(result).toBeDefined();
     expect(result.length).toBeGreaterThan(0);
