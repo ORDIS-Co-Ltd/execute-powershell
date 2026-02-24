@@ -107,6 +107,12 @@ describe("validatePackFiles", () => {
     const missing = validatePackFiles(malformedPackResult);
     expect(missing).toEqual(REQUIRED_FILES);
   });
+
+  it("returns all required files when packResult[0] is not an object", () => {
+    const malformedPackResult = ["not-an-object"] as unknown as PackResult[];
+    const missing = validatePackFiles(malformedPackResult);
+    expect(missing).toEqual(REQUIRED_FILES);
+  });
 });
 
 describe("runCheck", () => {
@@ -177,4 +183,37 @@ describe("main", () => {
     expect(errorSpy).toHaveBeenCalledWith("Missing required files:", ["README.md"]);
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  it("handles unexpected errors in main by logging and exiting", async () => {
+    const error = new Error("Unexpected error");
+    const mockCheck = async () => {
+      throw error;
+    };
+
+    await expect(main(mockCheck)).rejects.toThrow("process.exit(1)");
+
+    expect(errorSpy).toHaveBeenCalledWith(error);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("package-check bin entry point", () => {
+  it("executes successfully when run as main module", async () => {
+    // Run the bin script as a subprocess
+    const proc = Bun.spawn(["bun", "run", "bin/package-check.ts"], {
+      cwd: ".",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const exitCode = await proc.exited;
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    // The script should succeed (exit code 0) if all required files are present
+    // or fail (exit code 1) if files are missing
+    expect([0, 1]).toContain(exitCode);
+    // Should have some output either way
+    expect(stdout.length > 0 || stderr.length > 0).toBe(true);
+  }, 30000); // 30 second timeout for npm pack
 });

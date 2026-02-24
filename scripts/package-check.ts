@@ -57,17 +57,15 @@ export async function runCheck(): Promise<{ success: boolean; missing: string[] 
 export async function main(
   checkFn: () => Promise<{ success: boolean; missing: string[] }> = runCheck
 ): Promise<void> {
-  const { success, missing } = await checkFn();
-  if (!success) {
-    console.error("Missing required files:", missing);
-    process.exit(1);
-  }
-  console.log("✓ All required files present");
-}
-
-if (import.meta.main) {
-  main().catch((err) => {
+  try {
+    const { success, missing } = await checkFn();
+    if (!success) {
+      console.error("Missing required files:", missing);
+      process.exit(1);
+    }
+    console.log("✓ All required files present");
+  } catch (err) {
     console.error(err);
     process.exit(1);
-  });
+  }
 }

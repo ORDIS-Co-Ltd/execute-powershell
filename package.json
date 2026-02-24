@@ -25,6 +25,6 @@
   "scripts": {
     "test": "bun test",
     "build": "tsc",
-    "package:check": "bun run scripts/package-check.ts"
+    "package:check": "bun run bin/package-check.ts"
   }
 }
