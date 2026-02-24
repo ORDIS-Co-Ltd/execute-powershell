@@ -4,7 +4,7 @@ import { askExecutePowerShellPermission } from "./permissions.js";
 import { askExternalDirectoryIfRequired, resolveWorkdir } from "./workdir.js";
 import { formatMetadataFooter, type PowerShellMetadata } from "./metadata.js";
 import { resolvePowerShellExecutable } from "./powershell_exe.js";
-import { spawnPowerShell, createTerminationSignal } from "./process.js";
+import { spawnPowerShell, createTerminationSignal, terminateProcessTree } from "./process.js";
 import { collectCombinedOutput } from "./output.js";
 
 const argsSchema = {
@@ -106,6 +106,12 @@ export const execute_powershell = tool({
       // Return error message with metadata footer
       const errorOutput = error instanceof Error ? error.message : String(error);
       return errorOutput + formatMetadataFooter(metadata);
+    } finally {
+      // Always terminate process tree if ended by timeout or abort
+      const endedBy = getEndedBy();
+      if ((endedBy === "timeout" || endedBy === "abort") && proc?.pid) {
+        await terminateProcessTree(proc.pid);
+      }
     }
   },
 });
