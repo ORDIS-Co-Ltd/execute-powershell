@@ -37,8 +37,8 @@
 - [ ] `task-024`: Implement CI workflow gates on Windows (Depends on: `task-023`)
 
 ## Phase 7: SRS Coverage Closures (Blocked by listed dependencies)
-- [ ] `task-025`: Add local plugin-directory loading verification (Depends on: `task-022`)
-- [ ] `task-026`: Add tool discovery and session invokability verification (Depends on: `task-022`)
-- [ ] `task-027`: Add output truncation-boundary non-interference verification (Depends on: `task-018`)
-- [ ] `task-028`: Add Windows 10 and Windows 11 compatibility workflow matrix (Depends on: `task-024`)
-- [ ] `task-029`: Add execution-mode compliance verification for -Command stdin path (Depends on: `task-016`)
+- [x] `task-025`: Add local plugin-directory loading verification (Depends on: `task-022`)
+- [x] `task-026`: Add tool discovery and session invokability verification (Depends on: `task-022`)
+- [x] `task-027`: Add output truncation-boundary non-interference verification (Depends on: `task-018`)
+- [x] `task-028`: Add Windows 10 and Windows 11 compatibility workflow matrix (Depends on: `task-024`)
+- [x] `task-029`: Add execution-mode compliance verification for -Command stdin path (Depends on: `task-016`)
