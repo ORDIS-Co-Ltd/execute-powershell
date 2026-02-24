@@ -61,6 +61,11 @@ describe("Tool Discovery and Invokability", () => {
     const tool = tools.get("execute_powershell")!;
     expect(tool.description).toBe("Execute PowerShell commands on Windows");
     expect(tool.args).toBeDefined();
+    const schema = tool.args;
+    expect(schema.command).toBeDefined();
+    expect(schema.description).toBeDefined();
+    expect(schema.timeout_ms).toBeDefined();
+    expect(schema.workdir).toBeDefined();
   });
 
   it("invokes tool through registry execution path", async () => {
