@@ -2,12 +2,6 @@
 
 An OpenCode plugin that provides PowerShell script execution capabilities with built-in safety controls and permission management.
 
-## Installation
-
-```bash
-bun install @ordis_co_th/execute-powershell
-```
-
 ## Usage
 
 ### Register in `opencode.json`
