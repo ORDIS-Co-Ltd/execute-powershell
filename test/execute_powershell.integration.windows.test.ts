@@ -43,12 +43,12 @@ describe("execute_powershell Windows Integration", () => {
   }
 
   describe("stdin-driven execution", () => {
-    it("executes PowerShell command via stdin and captures combined stdout/stderr output", async () => {
+    it("validates combined stdout and stderr output", async () => {
       const context = await mockContext();
 
       const result = await toolDef.execute(
         {
-          command: "Write-Host 'stdout line'; Write-Error 'stderr line' 2>&1",
+          command: "Write-Host 'STDOUT_LINE'; Write-Error 'STDERR_LINE' 2>&1",
           description: "Test combined output capture",
           timeout_ms: 30000,
         },
@@ -58,6 +58,13 @@ describe("execute_powershell Windows Integration", () => {
       // Verify the result is a string
       expect(typeof result).toBe("string");
 
+      // Assert both stdout and stderr markers are present
+      expect(result).toContain("STDOUT_LINE");
+      expect(result).toContain("STDERR_LINE");
+
+      // Verify metadata footer is present
+      expect(result).toContain("<powershell_metadata>");
+
       // Parse and verify metadata footer
       const metadata = parseMetadataFooter(result);
       expect(metadata).not.toBeNull();
@@ -65,10 +72,6 @@ describe("execute_powershell Windows Integration", () => {
       expect(metadata?.endedBy).toBe("exit");
       expect(metadata?.shell).toMatch(/^(pwsh|powershell)$/);
       expect(metadata?.resolvedWorkdir).toBe(process.cwd());
-
-      // The output should contain the echo result
-      // Note: On Windows, PowerShell output format may vary
-      expect(result.length).toBeGreaterThan(0);
     });
 
     it("handles multi-line output from stdin command", async () => {
@@ -87,10 +90,13 @@ describe("execute_powershell Windows Integration", () => {
       expect(metadata).not.toBeNull();
       expect(metadata?.exitCode).toBe(0);
 
-      // Output should be non-empty
+      // Output should contain expected lines
       // Remove metadata footer for content check
       const contentOnly = result.replace(/<powershell_metadata>.*<\/powershell_metadata>/s, "");
-      expect(contentOnly.length).toBeGreaterThanOrEqual(0);
+      expect(contentOnly).toContain("Line1");
+      expect(contentOnly).toContain("Line2");
+      expect(contentOnly).toContain("Line3");
+      expect(contentOnly.split("\n").length).toBeGreaterThanOrEqual(3); // At least 3 lines
     });
   });
 
