@@ -5,45 +5,31 @@ An OpenCode plugin that provides PowerShell script execution capabilities with b
 ## Installation
 
 ```bash
-bun install execute-powershell
+bun install @ordis_co_th/execute-powershell
 ```
 
 ## Usage
 
 ### Register in `opencode.json`
 
-Add the plugin to your OpenCode configuration:
+Add the plugin to your OpenCode configuration. OpenCode expects the `plugin` key (singular) with a string array:
 
 ```json
 {
-  "plugins": [
-    "execute-powershell"
+  "plugin": [
+    "@ordis_co_th/execute-powershell@1.0.3"
   ]
 }
 ```
 
-Or with explicit import path:
+### Tool
 
-```json
-{
-  "plugins": [
-    {
-      "import": "execute-powershell",
-      "config": {}
-    }
-  ]
-}
-```
+Once registered, the plugin provides one tool: `execute_powershell`.
 
-### Available Tools
-
-Once registered, the plugin provides the `execute_powershell` tool with the following features:
-
-- **Command Execution**: Execute PowerShell scripts with proper output capture
-- **Permission Controls**: Built-in safety mechanisms for command validation
-- **Working Directory**: Configurable working directory for script execution
-- **Timeout Support**: Configurable execution timeouts
-- **Output Streaming**: Real-time stdout/stderr capture
+- Required params: `command`, `description`
+- Optional params: `timeout_ms`, `workdir`
+- `timeout_ms` default: `120000` (2 minutes)
+- `workdir` default: current OpenCode directory (`context.directory`)
 
 ### Example Tool Call
 
@@ -57,6 +43,59 @@ Once registered, the plugin provides the `execute_powershell` tool with the foll
   }
 }
 ```
+
+### Permission Integration (`ask` / `allow` / `deny`)
+
+This plugin uses OpenCode's native permission engine and asks for permission key `execute_powershell` before spawning any command.
+
+```json
+{
+  "permission": {
+    "execute_powershell": {
+      "*": "ask",
+      "Get-Process*": "allow",
+      "Get-ChildItem*": "allow",
+      "Invoke-Expression*": "deny",
+      "Remove-Item*": "deny"
+    }
+  }
+}
+```
+
+OpenCode evaluates rules with "last matching rule wins", so put broad defaults first and specific overrides later.
+
+### External Directory Permission
+
+If `workdir` resolves outside the active project/worktree boundary, the tool asks for OpenCode permission key `external_directory` using a recursive glob pattern.
+
+```json
+{
+  "permission": {
+    "execute_powershell": "ask",
+    "external_directory": "ask"
+  }
+}
+```
+
+### Output Metadata Footer
+
+Tool output includes a metadata footer:
+
+`<powershell_metadata>{...}</powershell_metadata>`
+
+Metadata fields:
+- `exitCode`
+- `endedBy` (`exit`, `timeout`, or `abort`)
+- `shell` (`pwsh`, `powershell`, or `unknown`)
+- `resolvedWorkdir`
+- `timeoutMs`
+- `durationMs`
+
+### Platform and Security Notes
+
+- Intended for Windows PowerShell command execution.
+- Permission checks run before execution.
+- For safer defaults, deny high-risk command patterns such as `Invoke-Expression*` and `Remove-Item*`.
 
 ## Development
 

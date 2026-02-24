@@ -11,6 +11,7 @@ describe("package manifest", () => {
     expect(pkg.name).toBeDefined();
     expect(pkg.version).toBeDefined();
     expect(pkg.type).toBe("module");
+    expect(pkg.main).toBe("./dist/index.js");
     expect(pkg.packageManager).toBeDefined();
   });
 
