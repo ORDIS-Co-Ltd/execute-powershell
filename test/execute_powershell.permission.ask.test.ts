@@ -1,6 +1,18 @@
-import { describe, it, expect, spyOn, mock, beforeEach } from "bun:test";
+import { describe, it, expect, spyOn, mock, beforeEach, afterEach } from "bun:test";
 import { execute_powershell } from "../src/tools/execute_powershell.js";
 import { askExecutePowerShellPermission } from "../src/tools/permissions.js";
+import { parseMetadataFooter } from "../src/tools/metadata.js";
+
+// Helper function to create a readable stream from string
+function createStreamFromString(text: string): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(text));
+      controller.close();
+    },
+  });
+}
 
 // Helper function to create a mock context
 function createMockContext() {
@@ -19,7 +31,30 @@ function createMockContext() {
   };
 }
 
+// Helper function to setup Bun.spawn mock
+function setupSpawnMock(expectedOutput: string, exitCode: number = 0) {
+  return mock(() => {
+    return {
+      stdout: createStreamFromString(expectedOutput),
+      stderr: createStreamFromString(""),
+      stdin: { write: () => {} },
+      exited: Promise.resolve(exitCode),
+      pid: 12345,
+    } as unknown as ReturnType<typeof Bun.spawn>;
+  });
+}
+
 describe("execute_powershell permission ask", () => {
+  let originalBunSpawn: typeof Bun.spawn;
+
+  beforeEach(() => {
+    originalBunSpawn = Bun.spawn;
+  });
+
+  afterEach(() => {
+    (Bun as unknown as { spawn: typeof originalBunSpawn }).spawn = originalBunSpawn;
+  });
+
   describe("askExecutePowerShellPermission function", () => {
     it("calls context.ask() with correct permission field", async () => {
       const context = createMockContext();
@@ -28,7 +63,7 @@ describe("execute_powershell permission ask", () => {
       await askExecutePowerShellPermission(context as any, command);
 
       expect(context.ask).toHaveBeenCalledTimes(1);
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
       expect(callArgs.permission).toBe("execute_powershell");
     });
 
@@ -39,7 +74,7 @@ describe("execute_powershell permission ask", () => {
       await askExecutePowerShellPermission(context as any, command);
 
       expect(context.ask).toHaveBeenCalledTimes(1);
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
       expect(callArgs.patterns).toEqual([command]);
     });
 
@@ -50,7 +85,7 @@ describe("execute_powershell permission ask", () => {
       await askExecutePowerShellPermission(context as any, command);
 
       expect(context.ask).toHaveBeenCalledTimes(1);
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
       expect(callArgs.always).toEqual(["Get-Process *"]);
     });
 
@@ -61,7 +96,7 @@ describe("execute_powershell permission ask", () => {
       await askExecutePowerShellPermission(context as any, command);
 
       expect(context.ask).toHaveBeenCalledTimes(1);
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
       expect(callArgs.metadata).toEqual({});
     });
 
@@ -72,7 +107,7 @@ describe("execute_powershell permission ask", () => {
       await askExecutePowerShellPermission(context as any, command);
 
       expect(context.ask).toHaveBeenCalledTimes(1);
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
       expect(callArgs.permission).toBe("execute_powershell");
       expect(callArgs.patterns).toEqual([command]);
       expect(callArgs.always).toEqual(["Write-Host *"]);
@@ -85,7 +120,7 @@ describe("execute_powershell permission ask", () => {
       await askExecutePowerShellPermission(context as any, command);
 
       expect(context.ask).toHaveBeenCalledTimes(1);
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
       expect(callArgs.permission).toBe("execute_powershell");
       expect(callArgs.patterns).toEqual([command]);
       expect(callArgs.always).toEqual(["script.ps1 *"]);
@@ -97,11 +132,14 @@ describe("execute_powershell permission ask", () => {
       const context = createMockContext();
       const callOrder: string[] = [];
 
+      // Mock Bun.spawn to return expected output
+      (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMock("Executed in: /project/root");
+
       // Wrap the mock to track call order
       const originalAsk = context.ask;
       context.ask = mock(async (...args: any[]) => {
         callOrder.push("ask");
-        return originalAsk(...args);
+        return (originalAsk as any)(...args);
       });
 
       const result = await execute_powershell.execute(
@@ -117,7 +155,7 @@ describe("execute_powershell permission ask", () => {
       expect(context.ask).toHaveBeenCalledTimes(1);
 
       // Verify the payload structure
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
       expect(callArgs).toMatchObject({
         permission: "execute_powershell",
         patterns: ["Get-Process"],
@@ -125,13 +163,22 @@ describe("execute_powershell permission ask", () => {
         metadata: expect.any(Object),
       });
 
-      // Verify execution completed after permission ask
-      expect(result).toBe("Executed in: /project/root");
+      // Verify execution completed after permission ask - check result contains expected output
+      expect(result).toContain("Executed in: /project/root");
+      
+      // Verify metadata footer is present and valid
+      const metadata = parseMetadataFooter(result);
+      expect(metadata).not.toBeNull();
+      expect(metadata?.exitCode).toBe(0);
+      expect(metadata?.resolvedWorkdir).toBe("/project/root");
     });
 
     it("permission ask contains all required payload fields", async () => {
       const context = createMockContext();
       const command = "Start-Process notepad";
+
+      // Mock Bun.spawn
+      (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMock("Process started");
 
       await execute_powershell.execute(
         {
@@ -143,7 +190,7 @@ describe("execute_powershell permission ask", () => {
 
       expect(context.ask).toHaveBeenCalledTimes(1);
 
-      const callArgs = context.ask.mock.calls[0][0];
+      const callArgs = (context.ask as any).mock.calls[0][0];
 
       // Verify all required fields are present and correct
       expect(callArgs).toHaveProperty("permission");
@@ -176,6 +223,9 @@ describe("execute_powershell permission ask", () => {
         }),
       };
 
+      // Mock Bun.spawn
+      (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMock("Executed in: /custom/dir");
+
       const result = await execute_powershell.execute(
         {
           command: "Get-Process",
@@ -186,7 +236,12 @@ describe("execute_powershell permission ask", () => {
 
       // Permission ask should be first
       expect(callOrder).toEqual(["ask"]);
-      expect(result).toBe("Executed in: /custom/dir");
+      expect(result).toContain("Executed in: /custom/dir");
+      
+      // Verify metadata footer contains correct workdir
+      const metadata = parseMetadataFooter(result);
+      expect(metadata).not.toBeNull();
+      expect(metadata?.resolvedWorkdir).toBe("/custom/dir");
     });
 
     it("passes the exact command to permission ask", async () => {
@@ -200,6 +255,9 @@ describe("execute_powershell permission ask", () => {
       for (const command of commands) {
         const context = createMockContext();
 
+        // Mock Bun.spawn
+        (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMock("output");
+
         await execute_powershell.execute(
           {
             command,
@@ -209,7 +267,7 @@ describe("execute_powershell permission ask", () => {
         );
 
         expect(context.ask).toHaveBeenCalledTimes(1);
-        const callArgs = context.ask.mock.calls[0][0];
+        const callArgs = (context.ask as any).mock.calls[0][0];
         expect(callArgs.patterns).toEqual([command]);
         expect(callArgs.permission).toBe("execute_powershell");
       }
@@ -227,6 +285,9 @@ describe("execute_powershell permission ask", () => {
       for (const { command, expected } of testCases) {
         const context = createMockContext();
 
+        // Mock Bun.spawn
+        (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMock("output");
+
         await execute_powershell.execute(
           {
             command,
@@ -236,7 +297,7 @@ describe("execute_powershell permission ask", () => {
         );
 
         expect(context.ask).toHaveBeenCalledTimes(1);
-        const callArgs = context.ask.mock.calls[0][0];
+        const callArgs = (context.ask as any).mock.calls[0][0];
         expect(callArgs.always).toEqual([expected]);
       }
     });

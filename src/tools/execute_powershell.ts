@@ -2,6 +2,10 @@ import { tool, type ToolContext } from "@opencode-ai/plugin/tool";
 import { z } from "zod";
 import { askExecutePowerShellPermission } from "./permissions.js";
 import { askExternalDirectoryIfRequired, resolveWorkdir } from "./workdir.js";
+import { formatMetadataFooter, type PowerShellMetadata } from "./metadata.js";
+import { resolvePowerShellExecutable } from "./powershell_exe.js";
+import { spawnPowerShell } from "./process.js";
+import { collectCombinedOutput } from "./output.js";
 
 const argsSchema = {
   command: z.string(),
@@ -23,7 +27,93 @@ export const execute_powershell = tool({
     const resolvedWorkdir = resolveWorkdir(context.directory, args.workdir);
     await askExternalDirectoryIfRequired(context, resolvedWorkdir);
 
-    return `Executed in: ${resolvedWorkdir}`;
+    // Resolve PowerShell executable
+    const exe = resolvePowerShellExecutable();
+
+    // Apply default timeout if not provided
+    const timeoutMs = args.timeout_ms ?? 120000;
+
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+
+    // Track execution start time
+    const startTime = Date.now();
+    let endedBy: PowerShellMetadata["endedBy"] = "exit";
+    let exitCode = 0;
+    let proc: ReturnType<typeof spawnPowerShell> | undefined;
+
+    try {
+      // Spawn PowerShell process
+      proc = spawnPowerShell({
+        exePath: exe.path,
+        command: args.command,
+        cwd: resolvedWorkdir,
+        signal: controller.signal,
+      });
+
+      // Collect combined output
+      const output = await collectCombinedOutput(proc);
+
+      // Get exit code
+      exitCode = await proc.exited;
+
+      // Calculate duration
+      const durationMs = Date.now() - startTime;
+
+      // Clear timeout if process finished normally
+      if (timeoutId) clearTimeout(timeoutId);
+
+      // Build metadata
+      const metadata: PowerShellMetadata = {
+        exitCode,
+        endedBy,
+        shell: exe.kind,
+        resolvedWorkdir,
+        timeoutMs,
+        durationMs,
+      };
+
+      // Return output with metadata footer
+      return output + formatMetadataFooter(metadata);
+    } catch (error) {
+      // Clear timeout
+      if (timeoutId) clearTimeout(timeoutId);
+
+      // Calculate duration for error case
+      const durationMs = Date.now() - startTime;
+
+      // Determine how execution ended:
+      // - "timeout": process exceeded timeout duration
+      // - "abort": process was explicitly killed (proc.killed)
+      // - "exit": any other failure (normal process exit with error)
+      if (controller.signal.aborted && durationMs >= timeoutMs) {
+        endedBy = "timeout";
+        exitCode = 1;
+      } else if (proc?.killed) {
+        endedBy = "abort";
+        exitCode = -1;
+      } else {
+        endedBy = "exit";
+        exitCode = -1;
+      }
+
+      // Build metadata for error case
+      const metadata: PowerShellMetadata = {
+        exitCode,
+        endedBy,
+        shell: exe.kind,
+        resolvedWorkdir,
+        timeoutMs,
+        durationMs,
+      };
+
+      // Return error message with metadata footer
+      const errorOutput = error instanceof Error ? error.message : String(error);
+      return errorOutput + formatMetadataFooter(metadata);
+    }
   },
 });
 
