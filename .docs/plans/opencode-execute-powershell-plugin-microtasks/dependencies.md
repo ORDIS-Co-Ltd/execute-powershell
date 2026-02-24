@@ -10,8 +10,8 @@
 - [ ] `task-005`: Implement plugin export contract (Depends on: `task-004`)
 - [ ] `task-006`: Implement tool registration contract (Depends on: `task-005`)
 - [ ] `task-007`: Implement timeout argument schema rules (Depends on: `task-006`)
-- [ ] `task-008`: Implement workdir argument default behavior (Depends on: `task-007`)
-- [ ] `task-009`: Implement command prefix derivation utility (Depends on: `task-007`)
+- [x] `task-008`: Implement workdir argument default behavior (Depends on: `task-007`)
+- [x] `task-009`: Implement command prefix derivation utility (Depends on: `task-007`)
 - [ ] `task-010`: Wire execute permission request flow (Depends on: `task-008`, `task-009`)
 
 ## Phase 3: Path Safety (Blocked by Phase 2)
