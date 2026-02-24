@@ -15,10 +15,29 @@ export const REQUIRED_FILES = [
 ];
 
 export function validatePackFiles(packResult: PackResult[]): string[] {
-  if (!packResult || !packResult[0] || !packResult[0].files) {
-    return REQUIRED_FILES; // All files missing if payload malformed
+  // Validate packResult structure
+  if (!Array.isArray(packResult) || packResult.length === 0) {
+    return REQUIRED_FILES;
   }
-  const files = packResult[0].files.map((f: PackFile) => f.path);
+
+  const result = packResult[0];
+  if (!result || typeof result !== "object") {
+    return REQUIRED_FILES;
+  }
+
+  // Validate files is an array
+  if (!Array.isArray(result.files)) {
+    return REQUIRED_FILES;
+  }
+
+  // Safely extract paths, handling non-object items
+  const files: string[] = [];
+  for (const item of result.files) {
+    if (item && typeof item === "object" && typeof item.path === "string") {
+      files.push(item.path);
+    }
+  }
+
   return REQUIRED_FILES.filter((f) => !files.includes(f));
 }
 

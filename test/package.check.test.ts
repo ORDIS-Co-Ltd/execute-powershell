@@ -83,6 +83,30 @@ describe("validatePackFiles", () => {
     const missing = validatePackFiles(malformedPackResult);
     expect(missing).toEqual(REQUIRED_FILES);
   });
+
+  it("returns all required files when files is a string instead of array", () => {
+    const malformedPackResult = [
+      { files: "abc" },
+    ] as unknown as PackResult[];
+    const missing = validatePackFiles(malformedPackResult);
+    expect(missing).toEqual(REQUIRED_FILES);
+  });
+
+  it("returns all required files when files is an array of strings", () => {
+    const malformedPackResult = [
+      { files: ["not-an-object"] },
+    ] as unknown as PackResult[];
+    const missing = validatePackFiles(malformedPackResult);
+    expect(missing).toEqual(REQUIRED_FILES);
+  });
+
+  it("returns all required files when files contains objects without path", () => {
+    const malformedPackResult = [
+      { files: [{ noPath: true }] },
+    ] as unknown as PackResult[];
+    const missing = validatePackFiles(malformedPackResult);
+    expect(missing).toEqual(REQUIRED_FILES);
+  });
 });
 
 describe("runCheck", () => {
