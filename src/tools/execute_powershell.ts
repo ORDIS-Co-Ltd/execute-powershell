@@ -15,7 +15,7 @@ export const execute_powershell = tool({
   args: argsSchema as z.ZodRawShape,
   async execute(args: ArgsType, context: ToolContext) {
     const effectiveWorkdir = args.workdir ?? context.directory;
-    return "placeholder_output";
+    return `Executed in: ${effectiveWorkdir}`;
   },
 });
 
