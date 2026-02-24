@@ -65,13 +65,6 @@ export const execute_powershell = tool({
       // Get endedBy from the coordinator
       const endedBy = getEndedBy();
 
-      // Terminate process tree if ended by timeout or abort
-      if (endedBy === "timeout" || endedBy === "abort") {
-        if (proc.pid) {
-          await terminateProcessTree(proc.pid);
-        }
-      }
-
       // Build metadata
       const metadata: PowerShellMetadata = {
         exitCode,
@@ -113,6 +106,12 @@ export const execute_powershell = tool({
       // Return error message with metadata footer
       const errorOutput = error instanceof Error ? error.message : String(error);
       return errorOutput + formatMetadataFooter(metadata);
+    } finally {
+      // Always terminate process tree if ended by timeout or abort
+      const endedBy = getEndedBy();
+      if ((endedBy === "timeout" || endedBy === "abort") && proc?.pid) {
+        await terminateProcessTree(proc.pid);
+      }
     }
   },
 });

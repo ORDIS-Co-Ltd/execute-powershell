@@ -1,5 +1,68 @@
-import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from "bun:test";
 import { terminateProcessTree } from "../src/tools/process.js";
+import { execute_powershell } from "../src/tools/execute_powershell.js";
+
+// Helper function to create a readable stream from string
+function createStreamFromString(text: string): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(text));
+      controller.close();
+    },
+  });
+}
+
+// Helper function to create a mock context
+function createMockContext(abortSignal?: AbortSignal) {
+  const abortController = abortSignal ? undefined : new AbortController();
+  const askFn = mock(async () => {});
+
+  return {
+    sessionID: "test-session",
+    messageID: "test-message",
+    agent: "test-agent",
+    directory: "/project/root",
+    worktree: "/project",
+    abort: abortSignal ?? abortController!.signal,
+    metadata: () => {},
+    ask: askFn,
+  };
+}
+
+// Helper function to setup Bun.spawn mock with delayed output (for timeout testing)
+function setupDelayedSpawnMock(expectedOutput: string, delayMs: number, exitCode: number = 0, pid: number = 12345) {
+  return mock(() => {
+    return {
+      stdout: new ReadableStream<Uint8Array>({
+        start(controller) {
+          setTimeout(() => {
+            const encoder = new TextEncoder();
+            controller.enqueue(encoder.encode(expectedOutput));
+            controller.close();
+          }, delayMs);
+        },
+      }),
+      stderr: createStreamFromString(""),
+      stdin: { write: () => {} },
+      exited: new Promise((resolve) => setTimeout(() => resolve(exitCode), delayMs)),
+      pid: pid,
+    } as unknown as ReturnType<typeof Bun.spawn>;
+  });
+}
+
+// Helper function to setup Bun.spawn mock with abort signal
+function setupSpawnMockWithAbort(expectedOutput: string, exitCode: number = 0, pid: number = 12345) {
+  return mock(() => {
+    return {
+      stdout: createStreamFromString(expectedOutput),
+      stderr: createStreamFromString(""),
+      stdin: { write: () => {} },
+      exited: Promise.resolve(exitCode),
+      pid: pid,
+    } as unknown as ReturnType<typeof Bun.spawn>;
+  });
+}
 
 describe("terminateProcessTree", () => {
   let originalBunSpawn: typeof Bun.spawn;
@@ -200,6 +263,136 @@ describe("terminateProcessTree", () => {
 
       expect(killMock).toHaveBeenCalledTimes(1);
       expect(spawnMock).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  describe("execute_powershell integration", () => {
+    let originalBunSpawn: typeof Bun.spawn;
+    let terminateSpy: ReturnType<typeof spyOn>;
+
+    beforeEach(async () => {
+      originalBunSpawn = Bun.spawn;
+      terminateSpy = spyOn(await import("../src/tools/process.js"), "terminateProcessTree");
+    });
+
+    afterEach(() => {
+      (Bun as unknown as { spawn: typeof originalBunSpawn }).spawn = originalBunSpawn;
+      terminateSpy.mockRestore();
+    });
+
+    it("calls terminateProcessTree on timeout", async () => {
+      // Use a very short timeout so the process doesn't complete in time
+      const timeoutMs = 50;
+
+      // Mock spawn to return a process that takes longer than the timeout
+      (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupDelayedSpawnMock(
+        "This will timeout",
+        500, // delay longer than timeout
+        0,
+        12345
+      );
+
+      const context = createMockContext();
+
+      await execute_powershell.execute(
+        {
+          command: "Start-Sleep -Seconds 10",
+          description: "Long running command",
+          timeout_ms: timeoutMs,
+        },
+        context as any
+      );
+
+      // Wait a bit for the finally block to execute
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Verify terminateProcessTree was called with the PID
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+      expect(terminateSpy.mock.calls[0][0]).toBe(12345);
+    });
+
+    it("calls terminateProcessTree on abort", async () => {
+      // Create an already-aborted signal
+      const abortController = new AbortController();
+      abortController.abort();
+
+      // Mock spawn to return a process
+      (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMockWithAbort(
+        "output",
+        0,
+        99999
+      );
+
+      const context = createMockContext(abortController.signal);
+
+      await execute_powershell.execute(
+        {
+          command: "Write-Host 'test'",
+          description: "Test command",
+        },
+        context as any
+      );
+
+      // Wait a bit for the finally block to execute
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify terminateProcessTree was called with the PID
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+      expect(terminateSpy.mock.calls[0][0]).toBe(99999);
+    });
+
+    it("does not call terminateProcessTree on normal exit", async () => {
+      // Mock spawn to return a process that completes immediately
+      (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupSpawnMockWithAbort(
+        "Normal output",
+        0,
+        55555
+      );
+
+      const context = createMockContext();
+
+      await execute_powershell.execute(
+        {
+          command: "Write-Host 'Hello'",
+          description: "Simple command",
+        },
+        context as any
+      );
+
+      // Verify terminateProcessTree was NOT called for normal exit
+      expect(terminateSpy).toHaveBeenCalledTimes(0);
+    });
+
+    it("calls terminateProcessTree with correct PID on timeout", async () => {
+      // Use a very short timeout
+      const timeoutMs = 50;
+      const testPid = 77777;
+
+      // Mock spawn to return a process that times out
+      (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = setupDelayedSpawnMock(
+        "partial output",
+        500, // delay longer than timeout
+        0,
+        testPid
+      );
+
+      const context = createMockContext();
+
+      await execute_powershell.execute(
+        {
+          command: "Start-Sleep -Seconds 10",
+          description: "Long running command",
+          timeout_ms: timeoutMs,
+        },
+        context as any
+      );
+
+      // Wait for timeout to trigger and finally block to execute
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Verify terminateProcessTree was called with the correct PID
+      expect(terminateSpy).toHaveBeenCalledTimes(1);
+      expect(terminateSpy.mock.calls[0][0]).toBe(testPid);
     });
   });
 });
