@@ -24,23 +24,23 @@ describe("CI workflow configuration", () => {
     expect(parsed.name).toBe("CI");
   });
 
-  it("triggers on push to main branch", () => {
+  it("triggers on all push events (no branch restrictions)", () => {
     const content = readFileSync(workflowPath, "utf-8");
     const parsed = yaml.load(content) as Record<string, unknown>;
     expect(parsed.on).toBeDefined();
     const onTrigger = parsed.on as Record<string, unknown>;
     expect(onTrigger.push).toBeDefined();
-    const pushTrigger = onTrigger.push as Record<string, string[]>;
-    expect(pushTrigger.branches).toContain("main");
+    // Should not have branch restrictions
+    expect(onTrigger.push).toBeNull();
   });
 
-  it("triggers on pull_request to main branch", () => {
+  it("triggers on all pull_request events (no branch restrictions)", () => {
     const content = readFileSync(workflowPath, "utf-8");
     const parsed = yaml.load(content) as Record<string, unknown>;
     const onTrigger = parsed.on as Record<string, unknown>;
     expect(onTrigger.pull_request).toBeDefined();
-    const prTrigger = onTrigger.pull_request as Record<string, string[]>;
-    expect(prTrigger.branches).toContain("main");
+    // Should not have branch restrictions
+    expect(onTrigger.pull_request).toBeNull();
   });
 
   it("has required jobs section", () => {
@@ -57,11 +57,24 @@ describe("CI workflow configuration", () => {
     expect(jobs.test).toBeDefined();
   });
 
-  it("runs on windows-latest", () => {
+  it("uses matrix strategy", () => {
     const content = readFileSync(workflowPath, "utf-8");
     const parsed = yaml.load(content) as Record<string, unknown>;
     const jobs = parsed.jobs as Record<string, Record<string, unknown>>;
-    expect(jobs.test["runs-on"]).toBe("windows-latest");
+    expect(jobs.test.strategy).toBeDefined();
+    const strategy = jobs.test.strategy as Record<string, unknown>;
+    expect(strategy.matrix).toBeDefined();
+    const matrix = strategy.matrix as Record<string, unknown>;
+    expect(matrix.os).toBeDefined();
+    expect(Array.isArray(matrix.os)).toBe(true);
+    expect(matrix.os).toContain("windows-latest");
+  });
+
+  it("runs on matrix.os", () => {
+    const content = readFileSync(workflowPath, "utf-8");
+    const parsed = yaml.load(content) as Record<string, unknown>;
+    const jobs = parsed.jobs as Record<string, Record<string, unknown>>;
+    expect(jobs.test["runs-on"]).toBe("${{ matrix.os }}");
   });
 
   it("has required steps", () => {
