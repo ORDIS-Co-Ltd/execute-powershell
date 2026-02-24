@@ -1,51 +1,54 @@
 import { describe, it, expect } from "bun:test";
-import { main } from "../scripts/package-check";
+import {
+  validatePackFiles,
+  REQUIRED_FILES,
+  type PackResult,
+} from "../scripts/package-check";
 
-// Mock payloads for testing
-const validPackResult = [
+const validPackResult: PackResult[] = [
   {
-    files: [
-      { path: "dist/index.js" },
-      { path: "dist/index.d.ts" },
-      { path: "README.md" },
-      { path: "LICENSE" },
-      { path: "package.json" },
-    ],
+    files: REQUIRED_FILES.map((path) => ({ path })),
   },
 ];
 
-const missingReadmePackResult = [
+const missingReadmePackResult: PackResult[] = [
   {
-    files: [
-      { path: "dist/index.js" },
-      { path: "dist/index.d.ts" },
-      { path: "LICENSE" },
-      { path: "package.json" },
-    ],
+    files: REQUIRED_FILES.filter((f) => f !== "README.md").map((path) => ({
+      path,
+    })),
   },
 ];
 
-const missingDistPackResult = [
+const missingDistPackResult: PackResult[] = [
   {
-    files: [
-      { path: "README.md" },
-      { path: "LICENSE" },
-      { path: "package.json" },
-    ],
+    files: REQUIRED_FILES.filter(
+      (f) => f !== "dist/index.js" && f !== "dist/index.d.ts"
+    ).map((path) => ({ path })),
   },
 ];
 
-describe("package-check", () => {
-  it("should validate all required files are present", async () => {
-    // This test will run the actual package check against the real project
-    // and will pass if all required files are in the package
-    try {
-      await main();
-      // If we get here without an error, all files are present
-      expect(true).toBe(true);
-    } catch (err) {
-      // The main function calls process.exit(1) which throws an error in Bun
-      throw err;
-    }
+describe("validatePackFiles", () => {
+  it("returns empty array when all files present", () => {
+    const missing = validatePackFiles(validPackResult);
+    expect(missing).toEqual([]);
+  });
+
+  it("returns missing files when README.md absent", () => {
+    const missing = validatePackFiles(missingReadmePackResult);
+    expect(missing).toContain("README.md");
+    expect(missing).toHaveLength(1);
+  });
+
+  it("returns missing files when dist files absent", () => {
+    const missing = validatePackFiles(missingDistPackResult);
+    expect(missing).toContain("dist/index.js");
+    expect(missing).toContain("dist/index.d.ts");
+    expect(missing).toHaveLength(2);
+  });
+
+  it("returns all required files when pack result is empty", () => {
+    const emptyPackResult: PackResult[] = [{ files: [] }];
+    const missing = validatePackFiles(emptyPackResult);
+    expect(missing).toEqual(REQUIRED_FILES);
   });
 });
