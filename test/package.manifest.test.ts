@@ -18,7 +18,7 @@ describe("package manifest", () => {
     const pkg = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 
     expect(pkg.dependencies?.["@opencode-ai/plugin"]).toBe("1.2.10");
-    expect(pkg.dependencies?.zod).toBe("4.3.6");
+    expect(pkg.dependencies?.zod).toBe("4.1.8");
     expect(pkg.devDependencies?.typescript).toBe("5.9.3");
     expect(pkg.devDependencies?.["@types/bun"]).toBe("1.3.9");
   });

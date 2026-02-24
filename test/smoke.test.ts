@@ -1,8 +1,8 @@
 import { describe, it, expect } from "bun:test";
-import { placeholder } from "../src/index";
+import { ExecutePowerShellPlugin } from "../src/index";
 
 describe("smoke test", () => {
-  it("imports placeholder module", () => {
-    expect(placeholder).toBe(true);
+  it("imports plugin module", () => {
+    expect(ExecutePowerShellPlugin).toBeDefined();
   });
 });
