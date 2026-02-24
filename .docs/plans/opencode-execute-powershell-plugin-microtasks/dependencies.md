@@ -12,10 +12,10 @@
 - [ ] `task-007`: Implement timeout argument schema rules (Depends on: `task-006`)
 - [x] `task-008`: Implement workdir argument default behavior (Depends on: `task-007`)
 - [x] `task-009`: Implement command prefix derivation utility (Depends on: `task-007`)
-- [ ] `task-010`: Wire execute permission request flow (Depends on: `task-008`, `task-009`)
+- [x] `task-010`: Wire execute permission request flow (Depends on: `task-008`, `task-009`)
 
 ## Phase 3: Path Safety (Blocked by Phase 2)
-- [ ] `task-011`: Implement absolute workdir resolution (Depends on: `task-008`)
+- [x] `task-011`: Implement absolute workdir resolution (Depends on: `task-008`)
 - [ ] `task-012`: Implement boundary root evaluation (Depends on: `task-011`)
 - [ ] `task-013`: Wire external_directory permission request flow (Depends on: `task-010`, `task-012`)
 
