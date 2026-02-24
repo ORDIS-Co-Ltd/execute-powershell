@@ -46,9 +46,9 @@ describe("tool registration", () => {
     const toolDef = hooks.tool?.execute_powershell as ToolDefinition;
     const result = await toolDef.execute(
       { command: "echo test", description: "test", timeout_ms: 5000 },
-      { sessionID: "test", messageID: "test", agent: "test", directory: "", worktree: "", abort: new AbortController().signal, metadata: () => {}, ask: async () => {} }
+      { sessionID: "test", messageID: "test", agent: "test", directory: "/test/dir", worktree: "", abort: new AbortController().signal, metadata: () => {}, ask: async () => {} }
     );
 
-    expect(result).toBe("Executed in: ");
+    expect(result).toBe("Executed in: /test/dir");
   });
 });
