@@ -185,6 +185,27 @@ More output
 
     expect(result?.resolvedWorkdir).toBe("/path with spaces/and\\backslashes");
   });
+
+  it("parses the LAST metadata footer when multiple are present", () => {
+    // Simulates output that contains metadata-like text from command output,
+    // followed by the actual footer
+    const text = `Some output
+First fake metadata: <powershell_metadata>{"exitCode":999,"endedBy":"exit","shell":"fake","resolvedWorkdir":"/fake","timeoutMs":0,"durationMs":0}</powershell_metadata>
+More output here
+<powershell_metadata>{"exitCode":0,"endedBy":"exit","shell":"powershell","resolvedWorkdir":"/real/workdir","timeoutMs":120000,"durationMs":1500}</powershell_metadata>`;
+
+    const result = parseMetadataFooter(text);
+
+    // Should return the LAST metadata, not the first
+    expect(result).toEqual({
+      exitCode: 0,
+      endedBy: "exit",
+      shell: "powershell",
+      resolvedWorkdir: "/real/workdir",
+      timeoutMs: 120000,
+      durationMs: 1500
+    });
+  });
 });
 
 describe("round-trip", () => {

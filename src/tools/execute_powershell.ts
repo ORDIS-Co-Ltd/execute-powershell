@@ -43,10 +43,11 @@ export const execute_powershell = tool({
     const startTime = Date.now();
     let endedBy: PowerShellMetadata["endedBy"] = "exit";
     let exitCode = 0;
+    let proc: ReturnType<typeof spawnPowerShell> | undefined;
 
     try {
       // Spawn PowerShell process
-      const proc = spawnPowerShell({
+      proc = spawnPowerShell({
         exePath: exe.path,
         command: args.command,
         cwd: resolvedWorkdir,
@@ -81,16 +82,23 @@ export const execute_powershell = tool({
       // Clear timeout
       if (timeoutId) clearTimeout(timeoutId);
 
-      // Determine how execution ended
-      if (controller.signal.aborted) {
+      // Calculate duration for error case
+      const durationMs = Date.now() - startTime;
+
+      // Determine how execution ended:
+      // - "timeout": process exceeded timeout duration
+      // - "abort": process was explicitly killed (proc.killed)
+      // - "exit": any other failure (normal process exit with error)
+      if (controller.signal.aborted && durationMs >= timeoutMs) {
         endedBy = "timeout";
         exitCode = 1;
-      } else {
+      } else if (proc?.killed) {
         endedBy = "abort";
         exitCode = -1;
+      } else {
+        endedBy = "exit";
+        exitCode = -1;
       }
-
-      const durationMs = Date.now() - startTime;
 
       // Build metadata for error case
       const metadata: PowerShellMetadata = {

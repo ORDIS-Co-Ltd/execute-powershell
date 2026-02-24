@@ -46,11 +46,14 @@ export function formatMetadataFooter(meta: PowerShellMetadata): string {
  * @returns The parsed metadata, or null if not found
  */
 export function parseMetadataFooter(text: string): PowerShellMetadata | null {
-  const match = text.match(/<powershell_metadata>(.+?)<\/powershell_metadata>$/s);
-  if (!match) return null;
+  // Find ALL matches and take the LAST one (the actual footer, not any
+  // metadata-like text that might appear in command output)
+  const matches = [...text.matchAll(/<powershell_metadata>(.+?)<\/powershell_metadata>/gs)];
+  if (matches.length === 0) return null;
 
+  const lastMatch = matches[matches.length - 1];
   try {
-    const parsed = JSON.parse(match[1]);
+    const parsed = JSON.parse(lastMatch[1]);
     // Validate all required fields
     if (
       typeof parsed.exitCode !== "number" ||
