@@ -124,3 +124,33 @@ export function spawnPowerShell(options: SpawnPowerShellOptions) {
     windowsHide: true,
   });
 }
+
+/**
+ * Terminate a process and its entire process tree.
+ *
+ * On Windows, uses `taskkill /T` to terminate the process tree.
+ * On Unix-like systems, uses `kill -9 -pid` (negative PID kills process group).
+ *
+ * @param pid - Process ID to terminate
+ * @returns Promise that resolves when the termination command completes
+ */
+export async function terminateProcessTree(pid: number): Promise<void> {
+  if (process.platform === "win32") {
+    // Windows: taskkill /T kills the process tree
+    const proc = Bun.spawn([
+      "taskkill",
+      "/PID",
+      String(pid),
+      "/T",  // Terminate process tree
+      "/F",  // Force
+    ]);
+    await proc.exited;
+  } else {
+    // Unix: kill negative PID kills process group
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // Process may already be dead
+    }
+  }
+}
