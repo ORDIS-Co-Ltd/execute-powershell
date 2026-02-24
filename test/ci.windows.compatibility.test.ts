@@ -6,16 +6,26 @@ import yaml from "js-yaml";
 const workflowPath = resolve(import.meta.dir, "../.github/workflows/ci.yml");
 
 describe("CI Windows compatibility matrix", () => {
-  it("contains both Windows 10 and Windows 11 targets", () => {
+  it("includes windows-11 compatibility lane", () => {
     const content = readFileSync(workflowPath, "utf-8");
     const parsed = yaml.load(content) as Record<string, unknown>;
     const jobs = parsed.jobs as Record<string, Record<string, unknown>>;
     const strategy = jobs.test.strategy as Record<string, unknown>;
-    const matrix = strategy.matrix as Record<string, string[]>;
-    const os = matrix.os;
+    const matrix = strategy.matrix as { include: Array<{ compatibility: string; os: string }> };
+    const win11 = matrix.include.find(m => m.compatibility === "windows-11");
+    expect(win11).toBeDefined();
+    expect(win11?.os).toBe("windows-2022");
+  });
 
-    expect(os).toContain("windows-2022");
-    expect(os).toContain("windows-2019");
+  it("includes windows-10 compatibility lane", () => {
+    const content = readFileSync(workflowPath, "utf-8");
+    const parsed = yaml.load(content) as Record<string, unknown>;
+    const jobs = parsed.jobs as Record<string, Record<string, unknown>>;
+    const strategy = jobs.test.strategy as Record<string, unknown>;
+    const matrix = strategy.matrix as { include: Array<{ compatibility: string; os: string }> };
+    const win10 = matrix.include.find(m => m.compatibility === "windows-10");
+    expect(win10).toBeDefined();
+    expect(win10?.os).toBe("windows-2019");
   });
 
   it("runs on matrix.os", () => {
