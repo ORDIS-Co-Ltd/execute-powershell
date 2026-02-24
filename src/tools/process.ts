@@ -42,14 +42,25 @@ export function createTerminationSignal(
   contextAbort: AbortSignal | undefined,
   timeoutMs: number
 ): TerminationSignal {
+  // Check if already aborted - if so, return immediately with abort status
+  if (contextAbort?.aborted) {
+    return {
+      signal: contextAbort,
+      getEndedBy: () => "abort",
+    };
+  }
+
   const controller = new AbortController();
   let endedBy: "exit" | "timeout" | "abort" = "exit";
 
   // Handle context abort - triggered immediately when parent context cancels
   if (contextAbort) {
     contextAbort.addEventListener("abort", () => {
-      endedBy = "abort";
-      controller.abort();
+      // Only set if not already decided (first-cause wins)
+      if (endedBy === "exit") {
+        endedBy = "abort";
+        controller.abort();
+      }
     });
   }
 
@@ -57,8 +68,11 @@ export function createTerminationSignal(
   let timeoutId: Timer | undefined;
   if (timeoutMs > 0) {
     timeoutId = setTimeout(() => {
-      endedBy = "timeout";
-      controller.abort();
+      // Only set if not already decided (first-cause wins)
+      if (endedBy === "exit") {
+        endedBy = "timeout";
+        controller.abort();
+      }
     }, timeoutMs);
   }
 
