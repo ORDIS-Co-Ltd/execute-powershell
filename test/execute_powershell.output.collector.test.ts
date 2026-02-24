@@ -61,27 +61,45 @@ describe("collectCombinedOutput", () => {
 
       const result = await collectCombinedOutput({ stdout, stderr });
 
-      expect(result).toContain("stdout line 1");
-      expect(result).toContain("stderr line 1");
+      expect(result).toBe("stdout line 1\nstderr line 1\n");
     });
   });
 
   describe("interleaved output order", () => {
     it("preserves arrival order of interleaved chunks", async () => {
       // Create streams with multiple small chunks to encourage interleaving
-      const stdout = createSyntheticStream([
-        "stdout-1 ",
-        "stdout-2 ",
-        "stdout-3",
-      ]);
-      const stderr = createSyntheticStream([
-        "stderr-1 ",
-        "stderr-2 ",
-        "stderr-3",
-      ]);
+      // Using deterministic delay to ensure predictable interleaving
+      const stdout = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode("stdout-1 "));
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          controller.enqueue(encoder.encode("stdout-2 "));
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          controller.enqueue(encoder.encode("stdout-3"));
+          controller.close();
+        },
+      });
+      const stderr = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          controller.enqueue(encoder.encode("stderr-1 "));
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          controller.enqueue(encoder.encode("stderr-2 "));
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          controller.enqueue(encoder.encode("stderr-3"));
+          controller.close();
+        },
+      });
 
       const result = await collectCombinedOutput({ stdout, stderr });
 
+      // Verify all content is present in correct relative order
+      // stdout chunks should be in order, stderr chunks should be in order
+      expect(result.indexOf("stdout-1")).toBeLessThan(result.indexOf("stdout-2"));
+      expect(result.indexOf("stdout-2")).toBeLessThan(result.indexOf("stdout-3"));
+      expect(result.indexOf("stderr-1")).toBeLessThan(result.indexOf("stderr-2"));
+      expect(result.indexOf("stderr-2")).toBeLessThan(result.indexOf("stderr-3"));
       // All content should be present
       expect(result).toContain("stdout-1");
       expect(result).toContain("stdout-2");
@@ -92,29 +110,46 @@ describe("collectCombinedOutput", () => {
     });
 
     it("handles rapid interleaving", async () => {
-      const stdoutChunks: string[] = [];
-      const stderrChunks: string[] = [];
+      // Create a deterministic interleaved stream where we can predict exact order
+      const encoder = new TextEncoder();
+      const chunks: Array<{ source: "stdout" | "stderr"; data: Uint8Array }> =
+        [];
 
-      // Create many small chunks
+      // Create alternating chunks: O0, E0, O1, E1, etc.
       for (let i = 0; i < 10; i++) {
-        stdoutChunks.push(`O${i}`);
-        stderrChunks.push(`E${i}`);
+        chunks.push({ source: "stdout", data: encoder.encode(`O${i}`) });
+        chunks.push({ source: "stderr", data: encoder.encode(`E${i}`) });
       }
 
-      const stdout = createSyntheticStream(stdoutChunks);
-      const stderr = createSyntheticStream(stderrChunks);
+      const stdout = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          for (const chunk of chunks.filter((c) => c.source === "stdout")) {
+            controller.enqueue(chunk.data);
+            await new Promise((resolve) => setTimeout(resolve, 1));
+          }
+          controller.close();
+        },
+      });
+
+      const stderr = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          for (const chunk of chunks.filter((c) => c.source === "stderr")) {
+            controller.enqueue(chunk.data);
+            await new Promise((resolve) => setTimeout(resolve, 1));
+          }
+          controller.close();
+        },
+      });
 
       const result = await collectCombinedOutput({ stdout, stderr });
 
-      // Verify all stdout markers are present
+      // With synchronous starts and same delays, they interleave as: O0 E0 O1 E1...
+      const expected: string[] = [];
       for (let i = 0; i < 10; i++) {
-        expect(result).toContain(`O${i}`);
+        expected.push(`O${i}`);
+        expected.push(`E${i}`);
       }
-
-      // Verify all stderr markers are present
-      for (let i = 0; i < 10; i++) {
-        expect(result).toContain(`E${i}`);
-      }
+      expect(result).toBe(expected.join(""));
     });
   });
 
@@ -178,6 +213,65 @@ describe("collectCombinedOutput", () => {
 
       expect(result).toBe("世界");
     });
+
+    it("handles multi-byte UTF-8 split across chunks with interleaving", async () => {
+      // Regression test: UTF-8 corruption when chunks interleave
+      // This tests that separate decoders per stream prevent state bleeding
+      const encoder = new TextEncoder();
+
+      // 世界 is 6 bytes total (3 bytes per character)
+      // We'll split stdout bytes and interleave with stderr
+      const stdoutText = "世界";
+      const stdoutBytes = encoder.encode(stdoutText);
+
+      // stderr has simple ASCII
+      const stderrText = "AB";
+      const stderrBytes = encoder.encode(stderrText);
+
+      // Create streams that interleave: stdout chunk 1, stderr chunk 1, stdout chunk 2, stderr chunk 2
+      const stdoutChunk1 = new Uint8Array(stdoutBytes.slice(0, 4)); // 世 + partial 界
+      const stdoutChunk2 = new Uint8Array(stdoutBytes.slice(4)); // rest of 界
+
+      const stderrChunk1 = new Uint8Array([stderrBytes[0]]); // A
+      const stderrChunk2 = new Uint8Array([stderrBytes[1]]); // B
+
+      const stdout = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(stdoutChunk1);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          controller.enqueue(stdoutChunk2);
+          controller.close();
+        },
+      });
+
+      const stderr = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          controller.enqueue(stderrChunk1);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          controller.enqueue(stderrChunk2);
+          controller.close();
+        },
+      });
+
+      const result = await collectCombinedOutput({ stdout, stderr });
+
+      // The key assertion: UTF-8 characters must decode correctly despite interleaving
+      // With separate decoders, the multi-byte character "界" should be intact
+      // not corrupted by decoder state bleeding from stderr chunks
+      expect(result).toContain("世");
+      expect(result).toContain("界");
+      expect(result).toContain("A");
+      expect(result).toContain("B");
+
+      // Verify the characters appear in the correct relative order
+      const indexOfWorld = result.indexOf("世");
+      const indexOfBoundary = result.indexOf("界");
+      const indexOfA = result.indexOf("A");
+      const indexOfB = result.indexOf("B");
+
+      expect(indexOfWorld).toBeLessThan(indexOfBoundary);
+      expect(indexOfA).toBeLessThan(indexOfB);
+    });
   });
 
   describe("empty streams", () => {
@@ -232,9 +326,7 @@ describe("collectCombinedOutput", () => {
 
       const result = await collectCombinedOutput({ stdout, stderr });
 
-      for (let i = 0; i < 100; i++) {
-        expect(result).toContain(`chunk-${i}-`);
-      }
+      expect(result).toBe(chunks.join(""));
     });
   });
 
