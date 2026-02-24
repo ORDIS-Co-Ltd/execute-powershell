@@ -25,6 +25,6 @@
   "scripts": {
     "test": "bun test",
     "build": "tsc",
-    "package:check": "npm pack --dry-run --json"
+    "package:check": "bun run scripts/package-check.ts"
   }
 }
