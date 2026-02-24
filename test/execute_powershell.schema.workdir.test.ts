@@ -45,7 +45,7 @@ describe("workdir runtime default behavior", () => {
       mockContext as any
     );
 
-    expect(result).toBe("placeholder_output");
+    expect(result).toBe("Executed in: /project/root");
   });
 
   it("preserves explicit workdir argument value", async () => {
@@ -70,6 +70,6 @@ describe("workdir runtime default behavior", () => {
       mockContext as any
     );
 
-    expect(result).toBe("placeholder_output");
+    expect(result).toBe("Executed in: /explicit/path");
   });
 });
