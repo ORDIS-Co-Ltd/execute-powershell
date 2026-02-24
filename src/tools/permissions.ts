@@ -1,3 +1,23 @@
+import type { ToolContext } from "@opencode-ai/plugin/tool";
+
+/**
+ * Asks for permission to execute a PowerShell command.
+ * 
+ * @param context - The tool execution context
+ * @param command - The PowerShell command to execute
+ */
+export async function askExecutePowerShellPermission(
+  context: ToolContext,
+  command: string
+): Promise<void> {
+  await context.ask({
+    permission: "execute_powershell",
+    patterns: [command],
+    always: [deriveAlwaysPattern(command)],
+    metadata: {},
+  });
+}
+
 /**
  * Derives the always permission pattern from a PowerShell command.
  * 
