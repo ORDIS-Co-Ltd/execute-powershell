@@ -49,6 +49,6 @@ describe("tool registration", () => {
       { sessionID: "test", messageID: "test", agent: "test", directory: "", worktree: "", abort: new AbortController().signal, metadata: () => {}, ask: async () => {} }
     );
 
-    expect(result).toBe("placeholder_output");
+    expect(result).toBe("Executed in: ");
   });
 });
