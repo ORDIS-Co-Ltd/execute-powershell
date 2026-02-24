@@ -87,7 +87,7 @@ describe("Output Truncation Non-Interference", () => {
     
     // Count occurrences of the exact line pattern
     const matches = result.split(line).length - 1;
-    expect(matches).toBeGreaterThanOrEqual(lines);
+    expect(matches).toBe(lines);
     
     // Verify footer is present at the end
     expect(result).toContain("<powershell_metadata>");
@@ -200,8 +200,9 @@ describe("Output Truncation Non-Interference", () => {
     // Content should end naturally, not at a round number like 65536, 131072, etc.
     const contentOnly = result.replace(/<powershell_metadata>.*<\/powershell_metadata>/s, "");
     
-    // Check that we have substantial content (not truncated to a small size)
-    expect(contentOnly.length).toBeGreaterThan(100 * 1024); // At least 100KB
+    // Verify the 'B' characters are present in exact expected quantity
+    const bCount = (contentOnly.match(/B/g) || []).length;
+    expect(bCount).toBe(200 * 1024); // Exactly 200KB of B characters
     
     // Verify no suspicious truncation at common byte boundaries
     const suspiciousBoundaries = [65536, 131072, 262144, 1048576];
@@ -211,10 +212,6 @@ describe("Output Truncation Non-Interference", () => {
       // Content length should not be exactly at a boundary
       expect(contentOnly.length).not.toBe(boundary);
     }
-    
-    // Verify the 'B' characters are present in expected quantity
-    const bCount = (contentOnly.match(/B/g) || []).length;
-    expect(bCount).toBeGreaterThanOrEqual(180000); // Allow for some encoding overhead
   });
 
   it("preserves output integrity with special characters without truncation", async () => {
@@ -250,6 +247,6 @@ describe("Output Truncation Non-Interference", () => {
     // Count actual occurrences of the character
     const contentOnly = result.replace(/<powershell_metadata>.*<\/powershell_metadata>/s, "");
     const charMatches = contentOnly.split("漢字").length - 1;
-    expect(charMatches).toBeGreaterThanOrEqual(charCount);
+    expect(charMatches).toBe(charCount);
   });
 });
