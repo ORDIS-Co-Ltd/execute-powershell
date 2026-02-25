@@ -60,7 +60,7 @@ OpenCode evaluates rules with "last matching rule wins", so put broad defaults f
 
 ### External Directory Permission
 
-If `workdir` resolves outside the active project/worktree boundary, the tool asks for OpenCode permission key `external_directory` using a recursive glob pattern.
+If `workdir` resolves outside the active project/worktree boundary, the tool asks for OpenCode permission key `external_directory` using a recursive glob pattern. The tool also performs a best-effort scan of path arguments in common filesystem PowerShell commands (for example `Get-Content`, `Set-Content`, `Copy-Item`, `Move-Item`, `Remove-Item`, `Set-Location`) and asks `external_directory` for out-of-bound path targets.
 
 ```json
 {
@@ -77,6 +77,8 @@ Tool output includes a metadata footer:
 
 `<powershell_metadata>{...}</powershell_metadata>`
 
+Long output is truncated using OpenCode-compatible defaults (`2000` lines or `50 KiB`), and the full output is written to OpenCode's `tool-output` directory. The returned content includes a preview and the full output path.
+
 Metadata fields:
 - `exitCode`
 - `endedBy` (`exit`, `timeout`, or `abort`)
@@ -84,6 +86,8 @@ Metadata fields:
 - `resolvedWorkdir`
 - `timeoutMs`
 - `durationMs`
+- `truncated` (optional)
+- `outputPath` (optional)
 
 ### Platform and Security Notes
 

@@ -1,11 +1,16 @@
 import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin/tool";
 import { z } from "zod";
 import { askExecutePowerShellPermission } from "./permissions.js";
-import { askExternalDirectoryIfRequired, resolveWorkdir } from "./workdir.js";
+import {
+  askExternalDirectoriesIfRequired,
+  extractPowerShellCommandDirectories,
+  resolveWorkdir,
+} from "./workdir.js";
 import { formatMetadataFooter, type PowerShellMetadata } from "./metadata.js";
 import { resolvePowerShellExecutable } from "./powershell_exe.js";
 import { spawnPowerShell, createTerminationSignal, terminateProcessTree } from "./process.js";
 import { collectCombinedOutput } from "./output.js";
+import { truncateToolOutput } from "./truncation.js";
 
 const argsSchema = {
   command: z.string(),
@@ -27,7 +32,14 @@ export const execute_powershell: ToolDefinition = tool({
   async execute(args: ArgsType, context: ToolContext) {
     await askExecutePowerShellPermission(context, args.command);
     const resolvedWorkdir = resolveWorkdir(context.directory, args.workdir);
-    await askExternalDirectoryIfRequired(context, resolvedWorkdir);
+    const commandDirectories = extractPowerShellCommandDirectories(
+      args.command,
+      resolvedWorkdir
+    );
+    await askExternalDirectoriesIfRequired(context, [
+      resolvedWorkdir,
+      ...commandDirectories,
+    ]);
     const timeoutMs = args.timeout_ms ?? 120000;
     const { signal, getEndedBy } = createTerminationSignal(
       context.abort,
@@ -62,7 +74,13 @@ export const execute_powershell: ToolDefinition = tool({
         durationMs,
       };
 
-      return output + formatMetadataFooter(metadata);
+      const truncated = await truncateToolOutput(output);
+      if (truncated.truncated) {
+        metadata.truncated = true;
+        metadata.outputPath = truncated.outputPath;
+      }
+
+      return truncated.content + formatMetadataFooter(metadata);
     } catch (error) {
       const durationMs = Date.now() - startTime;
       const endedBy = getEndedBy();
@@ -78,7 +96,13 @@ export const execute_powershell: ToolDefinition = tool({
       };
 
       const errorOutput = error instanceof Error ? error.message : String(error);
-      return errorOutput + formatMetadataFooter(metadata);
+      const truncated = await truncateToolOutput(errorOutput);
+      if (truncated.truncated) {
+        metadata.truncated = true;
+        metadata.outputPath = truncated.outputPath;
+      }
+
+      return truncated.content + formatMetadataFooter(metadata);
     } finally {
       const endedBy = getEndedBy();
       if ((endedBy === "timeout" || endedBy === "abort") && proc?.pid) {

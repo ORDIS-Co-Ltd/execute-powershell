@@ -254,4 +254,60 @@ describe("execute_powershell external_directory permission integration", () => {
     expect(context.ask).toHaveBeenCalledTimes(1);
     expect((context.ask as any).mock.calls[0][0].permission).toBe("execute_powershell");
   });
+
+  it("requests external_directory when command references external path", async () => {
+    const context = createMockContext();
+
+    await execute_powershell.execute(
+      {
+        command: "Get-Content -Path /var/log/system.log",
+        description: "Read external file",
+        workdir: ".",
+      },
+      context as any
+    );
+
+    expect(context.ask).toHaveBeenCalledTimes(2);
+
+    const externalCall = (context.ask as any).mock.calls.find(
+      (call: any) => call[0].permission === "external_directory"
+    );
+    expect(externalCall).toBeDefined();
+    expect(externalCall[0].patterns).toContain("/var/log/**");
+  });
+
+  it("does not spawn process when external_directory is denied", async () => {
+    const originalBunSpawn = Bun.spawn;
+    let spawnCalled = false;
+
+    (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = ((...args: any[]) => {
+      spawnCalled = true;
+      return (originalBunSpawn as any)(...args);
+    }) as any;
+
+    try {
+      const context = createMockContext({
+        ask: mock(async (req: any) => {
+          if (req.permission === "external_directory") {
+            throw new Error("Denied external_directory");
+          }
+        }),
+      });
+
+      await expect(
+        execute_powershell.execute(
+          {
+            command: "Get-Content -Path /var/log/system.log",
+            description: "Read external file",
+            workdir: ".",
+          },
+          context as any
+        )
+      ).rejects.toThrow("Denied external_directory");
+
+      expect(spawnCalled).toBe(false);
+    } finally {
+      (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = originalBunSpawn;
+    }
+  });
 });

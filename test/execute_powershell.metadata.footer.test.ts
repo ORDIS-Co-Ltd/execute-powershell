@@ -213,6 +213,25 @@ More output
     expect(result?.resolvedWorkdir).toBe("/path with spaces/and\\backslashes");
   });
 
+  it("parses optional truncation metadata fields", () => {
+    const text =
+      "Output<powershell_metadata>{\"exitCode\":0,\"endedBy\":\"exit\",\"shell\":\"pwsh\",\"resolvedWorkdir\":\"/w\",\"timeoutMs\":120000,\"durationMs\":100,\"truncated\":true,\"outputPath\":\"/tmp/tool_123\"}</powershell_metadata>";
+
+    const result = parseMetadataFooter(text);
+
+    expect(result?.truncated).toBe(true);
+    expect(result?.outputPath).toBe("/tmp/tool_123");
+  });
+
+  it("returns null when truncation metadata fields have invalid types", () => {
+    const text =
+      "Output<powershell_metadata>{\"exitCode\":0,\"endedBy\":\"exit\",\"shell\":\"pwsh\",\"resolvedWorkdir\":\"/w\",\"timeoutMs\":120000,\"durationMs\":100,\"truncated\":\"true\"}</powershell_metadata>";
+
+    const result = parseMetadataFooter(text);
+
+    expect(result).toBeNull();
+  });
+
   it("parses the LAST metadata footer when multiple are present", () => {
     // Simulates output that contains metadata-like text from command output,
     // followed by the actual footer

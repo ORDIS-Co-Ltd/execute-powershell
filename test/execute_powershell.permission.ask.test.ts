@@ -296,9 +296,12 @@ describe("execute_powershell permission ask", () => {
           context as any
         );
 
-        expect(context.ask).toHaveBeenCalledTimes(1);
-        const callArgs = (context.ask as any).mock.calls[0][0];
-        expect(callArgs.always).toEqual([expected]);
+        expect((context.ask as any).mock.calls.length).toBeGreaterThanOrEqual(1);
+        const executeCall = (context.ask as any).mock.calls.find(
+          (call: any) => call[0].permission === "execute_powershell"
+        );
+        expect(executeCall).toBeDefined();
+        expect(executeCall[0].always).toEqual([expected]);
       }
     });
   });

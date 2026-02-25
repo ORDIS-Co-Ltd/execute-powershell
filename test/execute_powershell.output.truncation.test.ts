@@ -1,252 +1,237 @@
-import { describe, it, expect, mock, beforeEach } from "bun:test";
-import { ExecutePowerShellPlugin } from "../src/index.js";
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from "bun:test";
+import { readFile, rm } from "node:fs/promises";
+import path from "node:path";
+import { execute_powershell } from "../src/tools/execute_powershell.js";
 import { parseMetadataFooter } from "../src/tools/metadata.js";
-import type { ToolDefinition } from "@opencode-ai/plugin";
+import {
+  truncateToolOutput,
+  resolveOpenCodeDataDir,
+  resolveToolOutputDir,
+} from "../src/tools/truncation.js";
+import * as powershellExe from "../src/tools/powershell_exe.js";
 
-describe("Output Truncation Non-Interference", () => {
-  // Skip all tests on non-Windows platforms
-  if (process.platform !== "win32") {
-    it.skip("skipped on non-Windows platform", () => {});
-    return;
-  }
+function createStreamFromString(text: string): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(text));
+      controller.close();
+    },
+  });
+}
 
-  let toolDef: ToolDefinition;
+function createMockContext(overrides?: Partial<{ ask: (req: any) => Promise<void> }>) {
+  return {
+    sessionID: "test-session",
+    messageID: "test-message",
+    agent: "test-agent",
+    directory: "/home/user/project",
+    worktree: "/home/user/project",
+    abort: new AbortController().signal,
+    metadata: () => {},
+    ask: overrides?.ask ?? mock(async () => {}),
+  };
+}
+
+describe("output truncation", () => {
+  const tmpDataRoot = path.join(process.cwd(), "tmp", "truncation-test-data");
+  let originalDataDirEnv: string | undefined;
 
   beforeEach(async () => {
-    const hooks = await ExecutePowerShellPlugin({
-      client: {} as any,
-      project: {} as any,
-      directory: process.cwd(),
-      worktree: "",
-      serverUrl: new URL("http://localhost"),
-      $: {} as any,
+    originalDataDirEnv = process.env.OPENCODE_PLUGIN_DATA_DIR;
+    process.env.OPENCODE_PLUGIN_DATA_DIR = tmpDataRoot;
+    await rm(tmpDataRoot, { recursive: true, force: true });
+  });
+
+  afterEach(async () => {
+    if (originalDataDirEnv === undefined) {
+      delete process.env.OPENCODE_PLUGIN_DATA_DIR;
+    } else {
+      process.env.OPENCODE_PLUGIN_DATA_DIR = originalDataDirEnv;
+    }
+    await rm(tmpDataRoot, { recursive: true, force: true });
+  });
+
+  it("does not truncate output within limits", async () => {
+    const result = await truncateToolOutput("line1\nline2\nline3");
+
+    expect(result.truncated).toBe(false);
+    expect(result.content).toBe("line1\nline2\nline3");
+  });
+
+  it("resolves OpenCode data directory with override and platform fallbacks", () => {
+    const override = resolveOpenCodeDataDir({
+      env: { OPENCODE_PLUGIN_DATA_DIR: "/tmp/custom-opencode-data" },
+      platform: "darwin",
+      homeDir: "/Users/test",
     });
-    toolDef = hooks.tool?.execute_powershell as ToolDefinition;
+    expect(override).toBe("/tmp/custom-opencode-data");
+
+    const xdg = resolveOpenCodeDataDir({
+      env: { XDG_DATA_HOME: "/tmp/xdg-data" },
+      platform: "linux",
+      homeDir: "/home/test",
+    });
+    expect(xdg).toBe("/tmp/xdg-data/opencode");
+
+    const darwin = resolveOpenCodeDataDir({
+      env: {},
+      platform: "darwin",
+      homeDir: "/Users/test",
+    });
+    expect(darwin).toBe("/Users/test/Library/Application Support/opencode");
+
+    const win32 = resolveOpenCodeDataDir({
+      env: { LOCALAPPDATA: "C:\\Users\\test\\AppData\\Local" },
+      platform: "win32",
+      homeDir: "C:\\Users\\test",
+    });
+    expect(win32).toBe("C:\\Users\\test\\AppData\\Local\\opencode");
+
+    const linux = resolveOpenCodeDataDir({
+      env: {},
+      platform: "linux",
+      homeDir: "/home/test",
+    });
+    expect(linux).toBe("/home/test/.local/share/opencode");
   });
 
-  async function mockContext(overrides: Partial<{
-    directory: string;
-    abort: AbortSignal;
-    ask: (req: any) => Promise<any>;
-  }> = {}) {
-    return {
-      sessionID: "test-session",
-      messageID: "test-message",
-      agent: "test-agent",
-      directory: overrides.directory ?? process.cwd(),
-      worktree: "",
-      abort: overrides.abort ?? new AbortController().signal,
-      metadata: () => {},
-      ask: overrides.ask ?? mock(() => Promise.resolve()),
-    };
-  }
+  it("truncates by line count and writes full output file", async () => {
+    const content = Array.from({ length: 100 }, (_, i) => `line-${i}`).join("\n");
 
-  it("preserves full output without truncation", async () => {
-    // Generate known-size output deterministically
-    const line = "A".repeat(100);
-    const lines = 500; // 50KB of ASCII
-    const command = `for ($i = 0; $i -lt ${lines}; $i++) { Write-Host "${line}" }`;
-    
-    const context = await mockContext();
-    const result = await toolDef.execute(
-      {
-        command,
-        description: "Generate 50KB of ASCII output to test truncation behavior",
-        timeout_ms: 60000,
-      },
-      context as any
-    );
+    const result = await truncateToolOutput(content, {
+      maxLines: 10,
+      maxBytes: 100000,
+    });
 
-    // Verify the result is a string
-    expect(typeof result).toBe("string");
-    
-    // Extract metadata footer to verify it's present and intact
-    const metadata = parseMetadataFooter(result);
-    expect(metadata).not.toBeNull();
-    expect(metadata?.exitCode).toBe(0);
-    expect(metadata?.endedBy).toBe("exit");
-    
-    // Verify no truncation markers are present
-    // Common truncation indicators that should NOT appear in plugin output
-    const truncationMarkers = [
-      "...[truncated]",
-      "[output truncated]",
-      "... (truncated)",
-      "[truncated]",
-      "<truncated>",
-      "[Output truncated",
-      "(truncated)",
-    ];
-    
-    for (const marker of truncationMarkers) {
-      expect(result).not.toContain(marker);
-    }
-    
-    // Verify exact expected output - full content preservation
-    expect(result).toContain(line);
-    
-    // Count occurrences of the exact line pattern
-    const matches = result.split(line).length - 1;
-    expect(matches).toBe(lines);
-    
-    // Verify footer is present at the end
-    expect(result).toContain("<powershell_metadata>");
-    expect(result).toContain("</powershell_metadata>");
-    expect(result.endsWith("</powershell_metadata>")).toBe(true);
+    expect(result.truncated).toBe(true);
+    if (!result.truncated) return;
+
+    expect(result.content).toContain("...90 lines truncated...");
+    expect(result.content).toContain("The tool call succeeded but the output was truncated");
+    expect(result.outputPath).toContain(resolveToolOutputDir());
+
+    const saved = await readFile(result.outputPath, "utf-8");
+    expect(saved).toBe(content);
   });
 
-  it("preserves full multi-line output without truncation", async () => {
-    const context = await mockContext();
-    
-    // Generate many lines of output
-    const lineCount = 5000;
-    
-    const result = await toolDef.execute(
-      {
-        command: `
-          for ($i = 0; $i -lt ${lineCount}; $i++) {
-            Write-Host "LINE_$($i.ToString().PadLeft(6, '0'))_CONTENT"
-          }
-        `,
-        description: "Generate many lines to test line-based truncation",
-        timeout_ms: 60000,
-      },
-      context as any
-    );
+  it("truncates by byte count and writes full output file", async () => {
+    const content = "A".repeat(2000);
 
-    // Verify metadata footer is present
-    const metadata = parseMetadataFooter(result);
-    expect(metadata).not.toBeNull();
-    expect(metadata?.exitCode).toBe(0);
-    
-    // Verify no truncation markers
-    expect(result).not.toContain("...[truncated]");
-    expect(result).not.toContain("[truncated]");
-    
-    // Verify content contains expected line patterns - first and last lines
-    expect(result).toContain("LINE_000000_CONTENT");
-    expect(result).toContain("LINE_004999_CONTENT");
-    
-    // Verify full output preservation by checking all line patterns are present
-    // Each line has a unique index, so we can verify completeness
-    let lineMatches = 0;
-    for (let i = 0; i < lineCount; i++) {
-      const linePattern = `LINE_${i.toString().padStart(6, '0')}_CONTENT`;
-      if (result.includes(linePattern)) {
-        lineMatches++;
-      }
-    }
-    expect(lineMatches).toBe(lineCount);
+    const result = await truncateToolOutput(content, {
+      maxLines: 2000,
+      maxBytes: 100,
+    });
+
+    expect(result.truncated).toBe(true);
+    if (!result.truncated) return;
+
+    expect(result.content).toContain("bytes truncated...");
+
+    const saved = await readFile(result.outputPath, "utf-8");
+    expect(saved).toBe(content);
   });
 
-  it("preserves full output with mixed content without truncation", async () => {
-    const context = await mockContext();
-    
-    // Generate mixed stdout/stderr output
-    const result = await toolDef.execute(
-      {
-        command: `
-          $largeText = "X" * 50000
-          Write-Host $largeText
-          Write-Error $largeText 2>&1
-          Write-Host $largeText
-        `,
-        description: "Generate mixed stdout/stderr large output",
-        timeout_ms: 60000,
-      },
-      context as any
-    );
+  it("supports tail-direction previews", async () => {
+    const content = Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n");
 
-    // Verify metadata footer is present
-    const metadata = parseMetadataFooter(result);
-    expect(metadata).not.toBeNull();
-    expect(metadata?.exitCode).toBe(0);
-    
-    // Verify no truncation markers
-    expect(result).not.toContain("...[truncated]");
-    expect(result).not.toContain("[truncated]");
-    
-    // Verify output contains all expected content
-    // Content pattern is repeated 3 times (Write-Host X, Write-Error X, Write-Host X)
-    const contentOnly = result.replace(/<powershell_metadata>.*<\/powershell_metadata>/s, "");
-    const xCount = (contentOnly.match(/X/g) || []).length;
-    // Should have exactly 3 * 50000 = 150000 X characters
-    expect(xCount).toBe(150000);
-    
-    // Verify footer is at the very end (no truncation after footer)
-    expect(result.endsWith("</powershell_metadata>")).toBe(true);
+    const result = await truncateToolOutput(content, {
+      maxLines: 5,
+      maxBytes: 100000,
+      direction: "tail",
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.content).toContain("line-49");
+    expect(result.content).not.toContain("line-0");
   });
 
-  it("verifies plugin performs no manual byte-limit truncation", async () => {
-    const context = await mockContext();
-    
-    // Generate output that would trigger byte-limit truncation if implemented
-    const largeContent = "B".repeat(200 * 1024); // 200KB of content
-    
-    const result = await toolDef.execute(
-      {
-        command: `Write-Host '${largeContent}'`,
-        description: "Test for byte-limit truncation",
-        timeout_ms: 60000,
-      },
-      context as any
-    );
+  it("truncates by bytes in tail-direction mode", async () => {
+    const content = Array.from({ length: 100 }, (_, i) => `line-${i}-` + "X".repeat(40)).join("\n");
 
-    // Verify metadata
-    const metadata = parseMetadataFooter(result);
-    expect(metadata).not.toBeNull();
-    
-    // Verify the content is not clipped at arbitrary byte boundaries
-    // Content should end naturally, not at a round number like 65536, 131072, etc.
-    const contentOnly = result.replace(/<powershell_metadata>.*<\/powershell_metadata>/s, "");
-    
-    // Verify the 'B' characters are present in exact expected quantity
-    const bCount = (contentOnly.match(/B/g) || []).length;
-    expect(bCount).toBe(200 * 1024); // Exactly 200KB of B characters
-    
-    // Verify no suspicious truncation at common byte boundaries
-    const suspiciousBoundaries = [65536, 131072, 262144, 1048576];
-    for (const boundary of suspiciousBoundaries) {
-      // Length should not be exactly at a boundary (would suggest hard limit)
-      expect(result.length).not.toBe(boundary);
-      // Content length should not be exactly at a boundary
-      expect(contentOnly.length).not.toBe(boundary);
+    const result = await truncateToolOutput(content, {
+      maxLines: 100,
+      maxBytes: 200,
+      direction: "tail",
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.content).toContain("bytes truncated...");
+  });
+
+  it("returns truncated preview with metadata footer and outputPath", async () => {
+    const originalBunSpawn = Bun.spawn;
+    const resolverSpy = spyOn(
+      powershellExe,
+      "resolvePowerShellExecutable"
+    ).mockReturnValue({
+      kind: "pwsh",
+      path: "pwsh",
+    });
+
+    const longOutput = Array.from({ length: 2500 }, (_, i) => `LONG_LINE_${i}`).join("\n");
+    (Bun as unknown as { spawn: ReturnType<typeof mock> }).spawn = mock(() => {
+      return {
+        stdout: createStreamFromString(longOutput),
+        stderr: createStreamFromString(""),
+        stdin: { write: () => {} },
+        exited: Promise.resolve(0),
+        pid: 4242,
+      } as unknown as ReturnType<typeof Bun.spawn>;
+    });
+
+    try {
+      const result = await execute_powershell.execute(
+        {
+          command: "Write-Output 'test'",
+          description: "Produce long output",
+          timeout_ms: 30000,
+        },
+        createMockContext() as any
+      );
+
+      expect(result).toContain("The tool call succeeded but the output was truncated");
+      expect(result.endsWith("</powershell_metadata>")).toBe(true);
+
+      const metadata = parseMetadataFooter(result);
+      expect(metadata).not.toBeNull();
+      expect(metadata?.truncated).toBe(true);
+      expect(typeof metadata?.outputPath).toBe("string");
+
+      const saved = await readFile(metadata!.outputPath!, "utf-8");
+      expect(saved).toBe(longOutput);
+      expect(result).not.toContain("LONG_LINE_2499");
+    } finally {
+      resolverSpy.mockRestore();
+      (Bun as unknown as { spawn: typeof originalBunSpawn }).spawn = originalBunSpawn;
     }
   });
 
-  it("preserves output integrity with special characters without truncation", async () => {
-    const context = await mockContext();
-    
-    // Generate deterministic output with special characters
-    const charCount = 5000;
-    
-    const result = await toolDef.execute(
-      {
-        command: `
-          $utf8Content = "漢字" * ${charCount}
-          Write-Host $utf8Content -NoNewline
-        `,
-        description: "Test UTF-8 and special character preservation",
-        timeout_ms: 60000,
-      },
-      context as any
-    );
+  it("truncates oversized error output in catch path", async () => {
+    const resolverSpy = spyOn(
+      powershellExe,
+      "resolvePowerShellExecutable"
+    ).mockImplementation(() => {
+      throw new Error("E".repeat(60 * 1024));
+    });
 
-    // Verify metadata footer is present
-    const metadata = parseMetadataFooter(result);
-    expect(metadata).not.toBeNull();
-    expect(metadata?.exitCode).toBe(0);
-    
-    // Verify no truncation markers
-    expect(result).not.toContain("...[truncated]");
-    expect(result).not.toContain("[truncated]");
-    
-    // Verify UTF-8 characters are preserved
-    expect(result).toContain("漢字");
-    
-    // Count actual occurrences of the character
-    const contentOnly = result.replace(/<powershell_metadata>.*<\/powershell_metadata>/s, "");
-    const charMatches = contentOnly.split("漢字").length - 1;
-    expect(charMatches).toBe(charCount);
+    try {
+      const result = await execute_powershell.execute(
+        {
+          command: "Write-Output 'test'",
+          description: "Produce long error output",
+          timeout_ms: 30000,
+        },
+        createMockContext() as any
+      );
+
+      const metadata = parseMetadataFooter(result);
+      expect(metadata).not.toBeNull();
+      expect(metadata?.truncated).toBe(true);
+      expect(typeof metadata?.outputPath).toBe("string");
+      expect(result).toContain("bytes truncated...");
+    } finally {
+      resolverSpy.mockRestore();
+    }
   });
 });

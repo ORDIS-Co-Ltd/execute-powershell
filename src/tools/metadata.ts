@@ -22,6 +22,10 @@ export interface PowerShellMetadata {
   timeoutMs: number;
   /** Duration of execution in milliseconds */
   durationMs: number;
+  /** Whether output was truncated due to size limits */
+  truncated?: boolean;
+  /** Path to full output file when output is truncated */
+  outputPath?: string;
 }
 
 /**
@@ -61,7 +65,9 @@ export function parseMetadataFooter(text: string): PowerShellMetadata | null {
       typeof parsed.shell !== "string" ||
       typeof parsed.resolvedWorkdir !== "string" ||
       typeof parsed.timeoutMs !== "number" ||
-      typeof parsed.durationMs !== "number"
+      typeof parsed.durationMs !== "number" ||
+      (parsed.truncated !== undefined && typeof parsed.truncated !== "boolean") ||
+      (parsed.outputPath !== undefined && typeof parsed.outputPath !== "string")
     ) {
       return null;
     }
