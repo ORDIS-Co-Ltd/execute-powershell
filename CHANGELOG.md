@@ -6,6 +6,15 @@ All notable changes to `@ordis_co_th/execute-powershell` are documented in this 
 
 - No changes yet.
 
+## [1.0.5]
+
+### Fixed
+- Improved timeout/abort termination reliability by triggering process-tree kill immediately when abort signal fires and deduplicating cleanup in the finalizer.
+- Hardened Windows kill behavior to capture `taskkill` output, ignore benign "not found" results, and add a direct PID kill fallback when `taskkill` fails unexpectedly.
+
+### Changed
+- Expanded termination tests to validate Windows `taskkill` invocation shape, benign not-found handling, and fallback kill behavior.
+
 ## [1.0.4]
 
 ### Added

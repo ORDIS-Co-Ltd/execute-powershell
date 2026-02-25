@@ -79,6 +79,8 @@ describe("terminateProcessTree", () => {
     spawnMock = mock(() => {
       return {
         exited: Promise.resolve(0),
+        stdout: createStreamFromString(""),
+        stderr: createStreamFromString(""),
       } as unknown as ReturnType<typeof Bun.spawn>;
     });
     (Bun as unknown as { spawn: typeof spawnMock }).spawn = spawnMock;
@@ -106,14 +108,22 @@ describe("terminateProcessTree", () => {
       await terminateProcessTree(12345);
 
       expect(spawnMock).toHaveBeenCalledTimes(1);
-      const callArg = spawnMock.mock.calls[0][0] as string[];
-      expect(callArg).toEqual([
+      const callArg = spawnMock.mock.calls[0][0] as {
+        cmd: string[];
+        stdout: string;
+        stderr: string;
+        stdin: string;
+      };
+      expect(callArg.cmd).toEqual([
         "taskkill",
         "/PID",
         "12345",
         "/T",
         "/F",
       ]);
+      expect(callArg.stdin).toBe("ignore");
+      expect(callArg.stdout).toBe("pipe");
+      expect(callArg.stderr).toBe("pipe");
     });
 
     it("waits for taskkill to complete", async () => {
@@ -127,6 +137,8 @@ describe("terminateProcessTree", () => {
               resolve(0);
             }, 50);
           }),
+          stdout: createStreamFromString(""),
+          stderr: createStreamFromString(""),
         } as unknown as ReturnType<typeof Bun.spawn>;
       });
 
@@ -138,8 +150,41 @@ describe("terminateProcessTree", () => {
     it("handles different PIDs", async () => {
       await terminateProcessTree(99999);
 
-      const callArg = spawnMock.mock.calls[0][0] as string[];
-      expect(callArg[2]).toBe("99999");
+      const callArg = spawnMock.mock.calls[0][0] as { cmd: string[] };
+      expect(callArg.cmd[2]).toBe("99999");
+    });
+
+    it("ignores taskkill not-found errors", async () => {
+      spawnMock.mockImplementation(() => {
+        return {
+          exited: Promise.resolve(128),
+          stdout: createStreamFromString(""),
+          stderr: createStreamFromString('ERROR: The process "12345" not found.\n'),
+        } as unknown as ReturnType<typeof Bun.spawn>;
+      });
+
+      await expect(terminateProcessTree(12345)).resolves.toBeUndefined();
+    });
+
+    it("falls back to direct PID kill when taskkill fails unexpectedly", async () => {
+      const killMock = mock((pid: number, signal?: string) => {
+        void pid;
+        void signal;
+      });
+      process.kill = killMock as unknown as typeof process.kill;
+
+      spawnMock.mockImplementation(() => {
+        return {
+          exited: Promise.resolve(1),
+          stdout: createStreamFromString(""),
+          stderr: createStreamFromString("Access denied"),
+        } as unknown as ReturnType<typeof Bun.spawn>;
+      });
+
+      await terminateProcessTree(12345);
+
+      expect(killMock).toHaveBeenCalledTimes(1);
+      expect((killMock.mock.calls[0] as any[])[0]).toBe(12345);
     });
   });
 
@@ -216,8 +261,8 @@ describe("terminateProcessTree", () => {
       await terminateProcessTree(12345);
 
       expect(spawnMock).toHaveBeenCalledTimes(1);
-      const callArg = spawnMock.mock.calls[0][0] as string[];
-      expect(callArg[0]).toBe("taskkill");
+      const callArg = spawnMock.mock.calls[0][0] as { cmd: string[] };
+      expect(callArg.cmd[0]).toBe("taskkill");
     });
 
     it("uses Unix path when platform is linux", async () => {

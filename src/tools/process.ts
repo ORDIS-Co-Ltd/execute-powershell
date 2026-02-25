@@ -137,14 +137,44 @@ export function spawnPowerShell(options: SpawnPowerShellOptions) {
 export async function terminateProcessTree(pid: number): Promise<void> {
   if (process.platform === "win32") {
     // Windows: taskkill /T kills the process tree
-    const proc = Bun.spawn([
-      "taskkill",
-      "/PID",
-      String(pid),
-      "/T",  // Terminate process tree
-      "/F",  // Force
+    const proc = Bun.spawn({
+      cmd: [
+        "taskkill",
+        "/PID",
+        String(pid),
+        "/T", // Terminate process tree
+        "/F", // Force
+      ],
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      windowsHide: true,
+    });
+
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      readStreamText(proc.stdout),
+      readStreamText(proc.stderr),
     ]);
-    await proc.exited;
+
+    if (exitCode !== 0) {
+      const output = `${stdout}\n${stderr}`.toLowerCase();
+      // Common taskkill "already gone" messages should not be treated as errors.
+      if (
+        output.includes("not found") ||
+        output.includes("no running instance") ||
+        output.includes("process does not exist")
+      ) {
+        return;
+      }
+
+      // Fallback: attempt to kill the root PID directly.
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Ignore if already gone or unsupported.
+      }
+    }
   } else {
     // Unix: kill negative PID kills process group
     try {
@@ -153,4 +183,9 @@ export async function terminateProcessTree(pid: number): Promise<void> {
       // Process may already be dead
     }
   }
+}
+
+async function readStreamText(stream?: ReadableStream<Uint8Array>): Promise<string> {
+  if (!stream) return "";
+  return await new Response(stream).text();
 }

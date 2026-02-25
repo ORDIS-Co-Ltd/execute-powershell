@@ -49,6 +49,12 @@ export const execute_powershell: ToolDefinition = tool({
     let exitCode = 0;
     let shell = "unknown";
     let proc: ReturnType<typeof spawnPowerShell> | undefined;
+    let terminationPromise: Promise<void> | undefined;
+
+    const requestTermination = () => {
+      if (!proc?.pid || terminationPromise) return;
+      terminationPromise = terminateProcessTree(proc.pid).catch(() => {});
+    };
 
     try {
       const exe = resolvePowerShellExecutable();
@@ -60,6 +66,13 @@ export const execute_powershell: ToolDefinition = tool({
         cwd: resolvedWorkdir,
         signal,
       });
+
+      if (signal.aborted) {
+        requestTermination();
+      } else {
+        signal.addEventListener("abort", requestTermination, { once: true });
+      }
+
       const output = await collectCombinedOutput(proc);
       exitCode = await proc.exited;
       const durationMs = Date.now() - startTime;
@@ -104,9 +117,13 @@ export const execute_powershell: ToolDefinition = tool({
 
       return truncated.content + formatMetadataFooter(metadata);
     } finally {
+      signal.removeEventListener("abort", requestTermination);
       const endedBy = getEndedBy();
       if ((endedBy === "timeout" || endedBy === "abort") && proc?.pid) {
-        await terminateProcessTree(proc.pid);
+        requestTermination();
+        if (terminationPromise) {
+          await terminationPromise;
+        }
       }
     }
   },

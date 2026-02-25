@@ -11,7 +11,7 @@ Add the plugin to your OpenCode configuration. OpenCode expects the `plugin` key
 ```json
 {
   "plugin": [
-    "@ordis_co_th/execute-powershell@1.0.4"
+    "@ordis_co_th/execute-powershell@1.0.5"
   ]
 }
 ```
